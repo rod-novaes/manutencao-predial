@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestor de Manutenção Predial</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app-wrapper">
+        <nav id="main-menu">
+            <div class="menu-header">
+                <h2>Gestor de Manutenção Predial</h2>
+                <span class="version-info">Versão beta 09</span>
+            </div>
+            <ul>
+                <li><a href="#" class="nav-link active" data-target="screen-painel"><i class="fas fa-tachometer-alt"></i> Painel</a></li>
+                <li class="dropdown">
+                    <a href="#" class="nav-link"><i class="fas fa-archive"></i> Cadastros</a>
+                    <ul class="dropdown-content">
+                        <li><a href="#" class="nav-link" data-target="screen-lista-categorias"><i class="fas fa-tags"></i> Categorias</a></li>
+                        <li><a href="#" class="nav-link" data-target="screen-lista-subcategorias"><i class="fas fa-tag"></i> Subcategorias</a></li>
+                        <li><a href="#" class="nav-link" data-target="screen-lista-equipamentos"><i class="fas fa-cogs"></i> Equipamentos</a></li>
+                    </ul>
+                </li>
+                <li><a href="#" class="nav-link" data-target="screen-manutencoes"><i class="fas fa-calendar-check"></i> Manutenções</a></li>
+                <li><a href="#" class="nav-link" data-target="screen-configuracoes"><i class="fas fa-cog"></i> Configurações</a></li>
+            </ul>
+        </nav>
+
+        <main id="app-container">
+            <!-- TELA 1: Painel de Manutenção (Inicial) -->
+            <div id="screen-painel" class="screen active">
+                <div class="screen-header" id="painel-header">
+                    <h1 class="screen-title" id="painel-main-title">Painel de Manutenção</h1>
+                    <button class="btn btn-secondary" id="clear-filter-btn" data-action="clear-filter" style="display: none;"><i class="fas fa-times"></i> Limpar Filtro</button>
+                </div>
+                <div class="painel-layout">
+                    <div id="painel-alertas">
+                        <div class="card alerta-box" id="alertas-criticas"><h3><i class="fas fa-exclamation-triangle"></i> CRÍTICAS</h3><ul class="lista-os"></ul></div>
+                        <div class="card alerta-box" id="alertas-mes"><h3><i class="fas fa-calendar-day"></i> VENCENDO ESTE MÊS</h3><ul class="lista-os"></ul></div>
+                        <div class="card alerta-box" id="alertas-proximo-mes"><h3><i class="fas fa-calendar-alt"></i> PRÓXIMO MÊS</h3><ul class="lista-os"></ul></div>
+                    </div>
+                    <div id="painel-calendario" class="card">
+                        <!-- O calendário será inserido aqui pelo JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- TELA 2: Lista de Equipamentos -->
+            <div id="screen-lista-equipamentos" class="screen">
+                <div class="screen-header">
+                    <h1 class="screen-title">Equipamentos Cadastrados</h1>
+                    <button class="btn btn-primary" data-action="novo-equipamento"><i class="fas fa-plus"></i> Novo Equipamento</button>
+                </div>
+                <div class="card">
+                    <table>
+                        <thead><tr><th>Nome</th><th>Categoria</th><th>Subcategoria</th><th>Local</th><th>Periodicidade</th><th>Ações</th></tr></thead>
+                        <tbody><!-- Conteúdo gerado pelo JS --></tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- TELA 3: Lista de Categorias -->
+            <div id="screen-lista-categorias" class="screen">
+                <div class="screen-header">
+                    <h1 class="screen-title">Categorias de Equipamentos</h1>
+                    <button class="btn btn-primary" data-action="nova-categoria"><i class="fas fa-plus"></i> Nova Categoria</button>
+                </div>
+                <div class="card">
+                    <table>
+                        <thead><tr><th>Nome da Categoria</th><th>Ações</th></tr></thead>
+                        <tbody><!-- Conteúdo gerado pelo JS --></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TELA 4: Lista de Subcategorias -->
+            <div id="screen-lista-subcategorias" class="screen">
+                <div class="screen-header">
+                    <h1 class="screen-title">Subcategorias de Equipamentos</h1>
+                    <button class="btn btn-primary" data-action="nova-subcategoria"><i class="fas fa-plus"></i> Nova Subcategoria</button>
+                </div>
+                <div class="card">
+                    <table>
+                        <thead><tr><th>Nome da Subcategoria</th><th>Categoria Pai</th><th>Periodicidade</th><th>Ações</th></tr></thead>
+                        <tbody><!-- Conteúdo gerado pelo JS --></tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- TELA 5: Manutenções Preventivas -->
+             <div id="screen-manutencoes" class="screen">
+                <div class="screen-header">
+                    <h1 class="screen-title">Manutenções Preventivas</h1>
+                </div>
+                <div class="card">
+                    <div class="filter-bar" id="maintenance-filters">
+                        <div class="filter-group">
+                            <label for="filter-categoria">Categoria</label>
+                            <select id="filter-categoria"><option value="">Todas</option></select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-subcategoria">Subcategoria</label>
+                            <select id="filter-subcategoria" disabled><option value="">Todas</option></select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-equipamento">Equipamento</label>
+                            <select id="filter-equipamento" disabled><option value="">Todos</option></select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-status">Status</label>
+                            <select id="filter-status">
+                                <option value="">Todos</option>
+                                <option value="A vencer">A vencer</option>
+                                <option value="Atrasada">Atrasada</option>
+                                <option value="Concluída">Concluída</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-data-inicio">De</label>
+                            <input type="date" id="filter-data-inicio">
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-data-fim">Até</label>
+                            <input type="date" id="filter-data-fim">
+                        </div>
+                        <div class="quick-filters">
+                            <button class="btn btn-secondary" data-action="filter-week">Esta Semana</button>
+                            <button class="btn btn-secondary" data-action="filter-month">Este Mês</button>
+                            <button class="btn btn-secondary" data-action="filter-quarter">Este Trimestre</button>
+                            <button class="btn btn-secondary" data-action="clear-all-filters">Limpar Filtros</button>
+                        </div>
+                    </div>
+                </div>
+                 <div class="card">
+                    <table id="maintenance-table">
+                        <thead>
+                            <tr>
+                                <th class="sortable" data-sort-key="equipmentName">Equipamento <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort-key="categoryName">Categoria <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort-key="date">Data <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort-key="status">Status <span class="sort-icon"></span></th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="maintenance-table-body"><!-- Conteúdo gerado pelo JS --></tbody>
+                    </table>
+                </div>
+             </div>
+
+            <!-- TELA 6: Formulário de Ordem de Serviço (Legado/Oculto) -->
+            <div id="screen-form-os" class="screen">
+                <!-- Esta tela não é mais usada ativamente no fluxo principal -->
+            </div>
+
+            <!-- TELA 7: Configurações -->
+            <div id="screen-configuracoes" class="screen">
+                <h1 class="screen-title">Configurações</h1>
+                <div class="card">
+                    <h3>Backup e Restauração</h3>
+                    <p>Mantenha seus dados seguros. Crie backups regularmente.</p>
+                    <div class="form-actions">
+                         <button class="btn btn-primary" data-action="criar-backup"><i class="fas fa-download"></i> Criar Backup</button>
+                         <button class="btn btn-secondary" data-action="restaurar-backup"><i class="fas fa-upload"></i> Restaurar Backup</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ===== ESTRUTURA DO MODAL GENÉRICO ===== -->
+    <div id="modal-container" class="hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Título do Modal</h2>
+                <button id="modal-close-btn" class="modal-close-btn">&times;</button>
+            </div>
+            <div id="modal-body">
+                <!-- Conteúdo dinâmico (formulários, mensagens) será inserido aqui -->
+            </div>
+            <div id="modal-footer">
+                <!-- Botões de ação (Salvar, Cancelar, Excluir) serão inseridos aqui -->
+            </div>
+        </div>
+    </div>
+
+    <script src="mock-data.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

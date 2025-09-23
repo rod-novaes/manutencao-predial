@@ -1,10 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- ESTADO DA APLICAÇÃO ---
     let activeScreen = 'screen-painel';
-    const currentDate = new Date('2025-09-11T12:00:00'); // Simula a data de "hoje"
+    const today = new Date('2025-09-11T12:00:00'); // Data de referência "hoje", NUNCA MUDA
+    let calendarDate = new Date(today); // Data para navegação do calendário, PODE MUDAR
     let activeDateFilter = null;
-    let editingItemId = null; // ID genérico para edição, exclusão ou reversão
-    // Estado da ordenação da tabela de manutenções
+    let editingItemId = null;
     let sortColumn = 'date';
     let sortDirection = 'asc';
 
@@ -40,430 +40,522 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- LÓGICA CENTRAL DE MANUTENÇÃO ---
-
-    function calculateNextDueDate(lastDateStr, periodicity) {
-        const lastDate = new Date(lastDateStr + 'T12:00:00');
+    function calculateNextDueDate(lastDate, periodicity) {
+        const nextDate = new Date(lastDate);
         switch (periodicity) {
-            case 'Semanal': return new Date(lastDate.setDate(lastDate.getDate() + 7));
-            case 'Mensal': return new Date(lastDate.setMonth(lastDate.getMonth() + 1));
-            case 'Trimestral': return new Date(lastDate.setMonth(lastDate.getMonth() + 3));
-            case 'Semestral': return new Date(lastDate.setMonth(lastDate.getMonth() + 6));
-            case 'Anual': return new Date(lastDate.setFullYear(lastDate.getFullYear() + 1));
-            default: return new Date();
+            case 'Semanal': nextDate.setDate(nextDate.getDate() + 7); break;
+            case 'Mensal': nextDate.setMonth(nextDate.getMonth() + 1); break;
+            case 'Trimestral': nextDate.setMonth(nextDate.getMonth() + 3); break;
+            case 'Semestral': nextDate.setMonth(nextDate.getMonth() + 6); break;
+            case 'Anual': nextDate.setFullYear(nextDate.getFullYear() + 1); break;
+            default: break;
         }
+        return nextDate;
     }
 
-    function recalculateLastMaintenanceDate(equipmentId) {
-        const equipment = MOCK_DATA.equipamentos.find(e => e.id === equipmentId);
-        if (!equipment) return;
+    function generateTaskInstances() {
+        const upcomingTasks = [];
+        MOCK_DATA.componentes.forEach(componente => {
+            const sistema = MOCK_DATA.sistemas.find(s => s.id === componente.sistemaId);
+            if (!sistema) return;
 
-        const historyForEquipment = MOCK_DATA.historicoManutencoes
-            .filter(h => h.equipamentoId === equipmentId)
-            .sort((a, b) => new Date(b.data) - new Date(a.data));
+            const inheritedTasks = sistema.checklist || [];
+            const specificTasks = componente.tarefasEspecificas || [];
+            const allTasksForComponent = [...inheritedTasks, ...specificTasks];
 
-        if (historyForEquipment.length > 0) {
-            equipment.dataUltimaManutencao = historyForEquipment[0].data;
-        } else {
-            console.warn(`Não há mais histórico para o equipamento ID ${equipmentId}. A data da última manutenção não pôde ser recalculada.`);
-        }
-    }
+            allTasksForComponent.forEach(tarefa => {
+                const historyForTask = MOCK_DATA.historicoManutencoes
+                    .filter(h => h.componenteId === componente.id && h.tarefaId === tarefa.id)
+                    .sort((a, b) => new Date(b.data) - new Date(a.data));
 
-    function generateUpcomingMaintenances() {
-        const upcoming = [];
-        MOCK_DATA.equipamentos.forEach(equip => {
-            const subcategory = MOCK_DATA.subcategorias.find(s => s.id === equip.subcategoriaId);
-            if (!subcategory) return;
-            const category = MOCK_DATA.categorias.find(c => c.id === equip.categoriaId);
+                let dueDate;
+                if (historyForTask.length > 0) {
+                    const lastCompletionDate = new Date(historyForTask[0].data + 'T12:00:00');
+                    dueDate = calculateNextDueDate(lastCompletionDate, tarefa.periodicidade);
+                } else {
+                    const startDate = componente.dataInicio ? componente.dataInicio : today.toISOString().slice(0, 10);
+                    dueDate = new Date(startDate + 'T12:00:00');
+                }
 
-            const hasHistory = MOCK_DATA.historicoManutencoes.some(h => h.equipamentoId === equip.id);
-            
-            let dueDate;
-            if (hasHistory) {
-                dueDate = calculateNextDueDate(equip.dataUltimaManutencao, subcategory.periodicidade);
-            } else {
-                dueDate = new Date(equip.dataUltimaManutencao + 'T12:00:00');
-            }
+                const status = dueDate < today ? 'Atrasada' : 'A vencer';
 
-            const status = dueDate < currentDate ? 'Atrasada' : 'A vencer';
-
-            upcoming.push({
-                equipmentId: equip.id,
-                equipmentName: equip.nome,
-                categoryId: equip.categoriaId,
-                categoryName: category ? category.nome : 'N/A',
-                subcategoryId: equip.subcategoryId,
-                date: dueDate,
-                status: status,
-                type: 'upcoming'
+                upcomingTasks.push({
+                    componenteId: componente.id,
+                    componenteName: componente.nome,
+                    tarefaId: tarefa.id,
+                    tarefaDescricao: tarefa.tarefa,
+                    periodicidade: tarefa.periodicidade,
+                    grandeAreaId: componente.grandeAreaId,
+                    sistemaId: componente.sistemaId,
+                    criticidade: componente.criticidade, // Adicionado
+                    date: dueDate,
+                    status: status,
+                    type: 'upcoming'
+                });
             });
         });
-        return upcoming;
+        return upcomingTasks;
     }
 
-    function getAllMaintenancesForDisplay() {
-        const upcomingAndOverdue = generateUpcomingMaintenances();
+    function getAllMaintenanceTasksForDisplay() {
+        const upcomingAndOverdue = generateTaskInstances();
         const completed = MOCK_DATA.historicoManutencoes.map(hist => {
-            const equipment = MOCK_DATA.equipamentos.find(e => e.id === hist.equipamentoId);
-            if (!equipment) return null;
-            const category = MOCK_DATA.categorias.find(c => c.id === equipment.categoriaId);
+            const componente = MOCK_DATA.componentes.find(c => c.id === hist.componenteId);
+            if (!componente) return null;
+            const sistema = MOCK_DATA.sistemas.find(s => s.id === componente.sistemaId);
+            let tarefa = sistema ? sistema.checklist.find(t => t.id === hist.tarefaId) : null;
+            if (!tarefa && componente.tarefasEspecificas) {
+                tarefa = componente.tarefasEspecificas.find(t => t.id === hist.tarefaId);
+            }
             return {
                 historyId: hist.id,
-                equipmentId: equipment.id,
-                equipmentName: equipment.nome,
-                categoryId: equipment.categoriaId,
-                categoryName: category ? category.nome : 'N/A',
-                subcategoryId: equipment.subcategoriaId,
+                componenteId: componente.id,
+                componenteName: componente.nome,
+                tarefaId: hist.tarefaId,
+                tarefaDescricao: tarefa ? tarefa.tarefa : 'Tarefa não encontrada',
+                periodicidade: tarefa ? tarefa.periodicidade : 'N/A',
+                grandeAreaId: componente.grandeAreaId,
+                sistemaId: componente.sistemaId,
+                criticidade: componente.criticidade, // Adicionado
                 date: new Date(hist.data + 'T12:00:00'),
                 status: 'Concluída',
-                type: 'completed'
+                type: 'completed',
+                os: hist.os,
+                obs: hist.obs
             };
         }).filter(Boolean);
         return [...upcomingAndOverdue, ...completed];
     }
 
+    // --- FUNÇÕES DE CRUD ---
+    function getGrandeAreaFormHTML(grandeArea = {}) {
+        const grandeAreaName = grandeArea.nome || '';
+        return `<form id="grande-area-form"><div class="form-group"><label for="grande-area-name">Nome da Grande Área:</label><input type="text" id="grande-area-name" name="grande-area-name" value="${grandeAreaName}" required></div></form>`;
+    }
+    function handleAddGrandeArea() {
+        editingItemId = null;
+        const formHtml = getGrandeAreaFormHTML();
+        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-grande-area">Salvar</button>`;
+        showModal('Nova Grande Área', formHtml, footerHtml);
+        document.getElementById('grande-area-name').focus();
+    }
+    function handleEditGrandeArea(id) {
+        editingItemId = id;
+        const grandeArea = MOCK_DATA.grandesAreas.find(g => g.id === id);
+        if (!grandeArea) return;
+        const formHtml = getGrandeAreaFormHTML(grandeArea);
+        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-grande-area">Salvar Alterações</button>`;
+        showModal('Editar Grande Área', formHtml, footerHtml);
+        document.getElementById('grande-area-name').focus();
+    }
+    function handleDeleteGrandeArea(id) {
+        editingItemId = id;
+        const grandeArea = MOCK_DATA.grandesAreas.find(g => g.id === id);
+        if (!grandeArea) return;
+        const bodyHtml = `<p>Você tem certeza que deseja excluir a grande área <strong>"${grandeArea.nome}"</strong>? Esta ação não pode ser desfeita.</p>`;
+        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-danger" data-action="confirm-delete-grande-area">Confirmar Exclusão</button>`;
+        showModal('Confirmar Exclusão', bodyHtml, footerHtml);
+    }
+    function saveGrandeArea() {
+        const input = document.getElementById('grande-area-name');
+        if (!input.value.trim()) { alert('O nome da grande área não pode estar em branco.'); return; }
+        if (editingItemId) {
+            const grandeArea = MOCK_DATA.grandesAreas.find(g => g.id === editingItemId);
+            grandeArea.nome = input.value;
+        } else {
+            const newId = MOCK_DATA.grandesAreas.length > 0 ? Math.max(...MOCK_DATA.grandesAreas.map(g => g.id)) + 1 : 1;
+            MOCK_DATA.grandesAreas.push({ id: newId, nome: input.value });
+        }
+        renderListaGrandesAreas();
+        closeModal();
+    }
+    function confirmDeleteGrandeArea() {
+        MOCK_DATA.grandesAreas = MOCK_DATA.grandesAreas.filter(g => g.id !== editingItemId);
+        renderListaGrandesAreas();
+        closeModal();
+    }
 
-    // --- FUNÇÕES DE CRUD (mantidas para telas de cadastro) ---
-    function getCategoryFormHTML(category = {}) {
-        const categoryName = category.nome || '';
-        return `<form id="category-form"><div class="form-group"><label for="category-name">Nome da Categoria:</label><input type="text" id="category-name" name="category-name" value="${categoryName}" required></div></form>`;
+    function getSistemaFormHTML(sistema = {}) {
+        const { nome = '', grandeAreaId = '', areaResponsavel = '', checklist = [{tarefa: '', periodicidade: 'Mensal'}] } = sistema;
+        const grandeAreaOptions = MOCK_DATA.grandesAreas.map(ga => `<option value="${ga.id}" ${ga.id === grandeAreaId ? 'selected' : ''}>${ga.nome}</option>`).join('');
+        const checklistItems = checklist.map((item) => {
+            const selectedPeriodicidade = item.periodicidade || 'Mensal';
+            const optionsWithSelected = ['Semanal', 'Mensal', 'Trimestral', 'Semestral', 'Anual'].map(p => `<option value="${p}" ${p === selectedPeriodicidade ? 'selected' : ''}>${p}</option>`).join('');
+            return `<div class="checklist-item">
+                        <input type="text" class="checklist-item-input" value="${item.tarefa || ''}" placeholder="Descreva a tarefa">
+                        <select class="checklist-item-periodicity">${optionsWithSelected}</select>
+                        <button class="btn btn-danger remove-item-btn" data-action="remove-checklist-item" title="Remover item"><i class="fas fa-trash-alt"></i></button>
+                    </div>`;
+        }).join('');
+        return `<form id="sistema-form">
+                    <div class="form-group"><label for="sistema-grande-area">Grande Área:</label><select id="sistema-grande-area" required><option value="">Selecione...</option>${grandeAreaOptions}</select></div>
+                    <div class="form-group"><label for="sistema-name">Nome do Sistema:</label><input type="text" id="sistema-name" value="${nome}" required></div>
+                    <div class="form-group"><label for="sistema-area-responsavel">Área Responsável:</label><input type="text" id="sistema-area-responsavel" value="${areaResponsavel}"></div>
+                    <div class="form-group"><label>Tarefas do Plano de Manutenção:</label><div class="checklist-container">${checklistItems}</div><button type="button" class="btn btn-secondary" data-action="add-checklist-item"><i class="fas fa-plus"></i> Adicionar Tarefa</button></div>
+                </form>`;
     }
-    function handleAddCategory() {
+    function handleAddSistema() {
         editingItemId = null;
-        const formHtml = getCategoryFormHTML();
-        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-category">Salvar</button>`;
-        showModal('Nova Categoria', formHtml, footerHtml);
-        document.getElementById('category-name').focus();
+        const formHtml = getSistemaFormHTML();
+        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-sistema">Salvar</button>`;
+        showModal('Novo Sistema (Plano de Manutenção)', formHtml, footerHtml);
     }
-    function handleEditCategory(id) {
+    function handleEditSistema(id) {
         editingItemId = id;
-        const category = MOCK_DATA.categorias.find(c => c.id === id);
-        if (!category) return;
-        const formHtml = getCategoryFormHTML(category);
-        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-category">Salvar Alterações</button>`;
-        showModal('Editar Categoria', formHtml, footerHtml);
-        document.getElementById('category-name').focus();
+        const sistema = MOCK_DATA.sistemas.find(s => s.id === id);
+        if (!sistema) return;
+        const formHtml = getSistemaFormHTML(sistema);
+        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-sistema">Salvar Alterações</button>`;
+        showModal('Editar Sistema (Plano de Manutenção)', formHtml, footerHtml);
     }
-    function handleDeleteCategory(id) {
+    function handleDeleteSistema(id) {
         editingItemId = id;
-        const category = MOCK_DATA.categorias.find(c => c.id === id);
-        if (!category) return;
-        const bodyHtml = `<p>Você tem certeza que deseja excluir a categoria <strong>"${category.nome}"</strong>? Esta ação não pode ser desfeita.</p>`;
-        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-danger" data-action="confirm-delete-category">Confirmar Exclusão</button>`;
+        const sistema = MOCK_DATA.sistemas.find(s => s.id === id);
+        if (!sistema) return;
+        const bodyHtml = `<p>Você tem certeza que deseja excluir o sistema <strong>"${sistema.nome}"</strong>?</p>`;
+        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-danger" data-action="confirm-delete-sistema">Confirmar Exclusão</button>`;
         showModal('Confirmar Exclusão', bodyHtml, footerHtml);
     }
-    function saveCategory() {
-        const input = document.getElementById('category-name');
-        if (!input.value.trim()) { alert('O nome da categoria não pode estar em branco.'); return; }
+    function saveSistema() {
+        const grandeAreaId = parseInt(document.getElementById('sistema-grande-area').value);
+        const nome = document.getElementById('sistema-name').value.trim();
+        const areaResponsavel = document.getElementById('sistema-area-responsavel').value.trim();
+        const checklistItems = document.querySelectorAll('#sistema-form .checklist-item');
+        const checklist = Array.from(checklistItems).map((item, index) => {
+            const tarefa = item.querySelector('.checklist-item-input').value.trim();
+            const periodicidade = item.querySelector('.checklist-item-periodicity').value;
+            if (!tarefa) return null;
+            const idPrefix = editingItemId ? `s${editingItemId}` : 'new';
+            const id = `${idPrefix}-t${Date.now() + index}`;
+            return { id, tarefa, periodicidade };
+        }).filter(Boolean);
+        if (!nome || !grandeAreaId) { alert('Nome do Sistema e Grande Área são obrigatórios.'); return; }
+        const data = { grandeAreaId, nome, areaResponsavel, checklist };
         if (editingItemId) {
-            const category = MOCK_DATA.categorias.find(c => c.id === editingItemId);
-            category.nome = input.value;
+            const index = MOCK_DATA.sistemas.findIndex(s => s.id === editingItemId);
+            const originalSystem = MOCK_DATA.sistemas[index];
+            data.checklist.forEach((newTask) => {
+                const existingTask = originalSystem.checklist.find(oldTask => oldTask.tarefa === newTask.tarefa);
+                if (existingTask) newTask.id = existingTask.id;
+            });
+            MOCK_DATA.sistemas[index] = { ...originalSystem, ...data };
         } else {
-            const newId = MOCK_DATA.categorias.length > 0 ? Math.max(...MOCK_DATA.categorias.map(c => c.id)) + 1 : 1;
-            MOCK_DATA.categorias.push({ id: newId, nome: input.value });
+            const newId = MOCK_DATA.sistemas.length > 0 ? Math.max(...MOCK_DATA.sistemas.map(s => s.id)) + 1 : 1;
+            MOCK_DATA.sistemas.push({ id: newId, ...data });
         }
-        renderListaCategorias();
+        renderListaSistemas();
         closeModal();
     }
-    function confirmDeleteCategory() {
-        MOCK_DATA.categorias = MOCK_DATA.categorias.filter(c => c.id !== editingItemId);
-        renderListaCategorias();
+    function confirmDeleteSistema() {
+        MOCK_DATA.sistemas = MOCK_DATA.sistemas.filter(s => s.id !== editingItemId);
+        renderListaSistemas();
         closeModal();
     }
-    function getSubcategoryFormHTML(subcategory = {}) {
-        const { nome = '', categoriaId = '', periodicidade = 'Mensal', checklist = [''] } = subcategory;
-        const categoryOptions = MOCK_DATA.categorias.map(cat => `<option value="${cat.id}" ${cat.id === categoriaId ? 'selected' : ''}>${cat.nome}</option>`).join('');
-        const periodicidadeOptions = ['Semanal', 'Mensal', 'Trimestral', 'Semestral', 'Anual'].map(p => `<option value="${p}" ${p === periodicidade ? 'selected' : ''}>${p}</option>`).join('');
-        const checklistItems = checklist.map(item => `<div class="checklist-item"><input type="text" class="checklist-item-input" value="${item}" placeholder="Descreva o procedimento"><button class="btn btn-danger remove-item-btn" data-action="remove-checklist-item" title="Remover item"><i class="fas fa-trash-alt"></i></button></div>`).join('');
-        return `<form id="subcategory-form"><div class="form-group"><label for="subcategory-category">Categoria Pai:</label><select id="subcategory-category" required>${categoryOptions}</select></div><div class="form-group"><label for="subcategory-name">Nome da Subcategoria:</label><input type="text" id="subcategory-name" value="${nome}" required></div><div class="form-group"><label for="subcategory-periodicity">Periodicidade:</label><select id="subcategory-periodicity">${periodicidadeOptions}</select></div><div class="form-group"><label>Procedimentos (Checklist):</label><div class="checklist-container" id="checklist-container">${checklistItems}</div><button type="button" class="btn btn-secondary" id="add-checklist-item-btn" data-action="add-checklist-item"><i class="fas fa-plus"></i> Adicionar Procedimento</button></div></form>`;
-    }
-    function handleAddSubcategory() {
-        editingItemId = null;
-        const formHtml = getSubcategoryFormHTML();
-        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-subcategory">Salvar</button>`;
-        showModal('Nova Subcategoria', formHtml, footerHtml);
-    }
-    function handleEditSubcategory(id) {
-        editingItemId = id;
-        const subcategory = MOCK_DATA.subcategorias.find(s => s.id === id);
-        if (!subcategory) return;
-        const formHtml = getSubcategoryFormHTML(subcategory);
-        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-subcategory">Salvar Alterações</button>`;
-        showModal('Editar Subcategoria', formHtml, footerHtml);
-    }
-    function handleDeleteSubcategory(id) {
-        editingItemId = id;
-        const subcategory = MOCK_DATA.subcategorias.find(s => s.id === id);
-        if (!subcategory) return;
-        const bodyHtml = `<p>Você tem certeza que deseja excluir a subcategoria <strong>"${subcategory.nome}"</strong>?</p>`;
-        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-danger" data-action="confirm-delete-subcategory">Confirmar Exclusão</button>`;
-        showModal('Confirmar Exclusão', bodyHtml, footerHtml);
-    }
-    function saveSubcategory() {
-        const categoriaId = parseInt(document.getElementById('subcategory-category').value);
-        const nome = document.getElementById('subcategory-name').value.trim();
-        const periodicidade = document.getElementById('subcategory-periodicity').value;
-        const checklistInputs = document.querySelectorAll('.checklist-item-input');
-        const checklist = Array.from(checklistInputs).map(input => input.value.trim()).filter(item => item);
-        if (!nome) { alert('O nome da subcategoria é obrigatório.'); return; }
-        const data = { categoriaId, nome, periodicidade, checklist };
-        if (editingItemId) {
-            const index = MOCK_DATA.subcategorias.findIndex(s => s.id === editingItemId);
-            MOCK_DATA.subcategorias[index] = { ...MOCK_DATA.subcategorias[index], ...data };
-        } else {
-            const newId = MOCK_DATA.subcategorias.length > 0 ? Math.max(...MOCK_DATA.subcategorias.map(s => s.id)) + 1 : 1;
-            MOCK_DATA.subcategorias.push({ id: newId, ...data });
-        }
-        renderListaSubcategorias();
-        closeModal();
-    }
-    function confirmDeleteSubcategory() {
-        MOCK_DATA.subcategorias = MOCK_DATA.subcategorias.filter(s => s.id !== editingItemId);
-        renderListaSubcategorias();
-        closeModal();
-    }
-    function addChecklistItem() {
-        const container = document.getElementById('checklist-container');
+    function addChecklistItem(container) {
+        if (!container) return;
         const newItem = document.createElement('div');
         newItem.className = 'checklist-item';
-        newItem.innerHTML = `<input type="text" class="checklist-item-input" placeholder="Descreva o procedimento"><button class="btn btn-danger remove-item-btn" data-action="remove-checklist-item" title="Remover item"><i class="fas fa-trash-alt"></i></button>`;
+        const periodicidadeOptions = ['Semanal', 'Mensal', 'Trimestral', 'Semestral', 'Anual'].map(p => `<option value="${p}" ${p === 'Mensal' ? 'selected' : ''}>${p}</option>`).join('');
+        newItem.innerHTML = `<input type="text" class="checklist-item-input" placeholder="Descreva a tarefa">
+                             <select class="checklist-item-periodicity">${periodicidadeOptions}</select>
+                             <button class="btn btn-danger remove-item-btn" data-action="remove-checklist-item" title="Remover item"><i class="fas fa-trash-alt"></i></button>`;
         container.appendChild(newItem);
         newItem.querySelector('input').focus();
     }
-    function getEquipmentFormHTML(equipment = {}) {
-        const { nome = '', local = '', categoriaId = '', subcategoriaId = '', dataUltimaManutencao = '' } = equipment;
-        const isNew = !equipment.id;
-        const dateLabel = isNew ? '' : 'Data da Última Manutenção'; // Label será definida dinamicamente para novos
-        const categoryOptions = MOCK_DATA.categorias.map(cat => `<option value="${cat.id}" ${cat.id === categoriaId ? 'selected' : ''}>${cat.nome}</option>`).join('');
-        
-        const situationSelector = isNew ? `
-            <div class="form-group" id="situation-selector">
-                <label>Qual a situação deste equipamento?</label>
-                <div class="radio-options-container">
-                    <div class="radio-group">
-                        <input type="radio" id="sit-new" name="equipment-situation" value="new">
-                        <label for="sit-new">Novo, sem manutenções prévias.</label>
-                    </div>
-                    <div class="radio-group">
-                        <input type="radio" id="sit-existing" name="equipment-situation" value="existing">
-                        <label for="sit-existing">Em uso, com manutenções anteriores.</label>
-                    </div>
-                </div>
-            </div>` : '';
 
+    function getComponenteFormHTML(componente = {}) {
+        const { nome = '', grandeAreaId = '', sistemaId = '', criticidade = 'Classe B', edificio = '', andar = '', sala = '', complemento = '', dataInicio = '', tarefasEspecificas = [] } = componente;
+        const grandeAreaOptions = MOCK_DATA.grandesAreas.map(ga => `<option value="${ga.id}" ${ga.id === grandeAreaId ? 'selected' : ''}>${ga.nome}</option>`).join('');
+        const criticidadeOptions = ['Classe A', 'Classe B', 'Classe C'].map(c => `<option value="${c}" ${c === criticidade ? 'selected' : ''}>${c}</option>`).join('');
+        const tarefasItems = tarefasEspecificas.map((item) => {
+            const selectedPeriodicidade = item.periodicidade || 'Mensal';
+            const optionsWithSelected = ['Semanal', 'Mensal', 'Trimestral', 'Semestral', 'Anual'].map(p => `<option value="${p}" ${p === selectedPeriodicidade ? 'selected' : ''}>${p}</option>`).join('');
+            return `<div class="checklist-item">
+                        <input type="text" class="checklist-item-input" value="${item.tarefa || ''}" placeholder="Descreva a tarefa específica">
+                        <select class="checklist-item-periodicity">${optionsWithSelected}</select>
+                        <button class="btn btn-danger remove-item-btn" data-action="remove-checklist-item" title="Remover item"><i class="fas fa-trash-alt"></i></button>
+                    </div>`;
+        }).join('');
         return `
-            <form id="equipment-form">
-                ${situationSelector}
+            <form id="componente-form">
                 <div class="form-group">
-                    <label for="equipment-category">Categoria:</label>
-                    <select id="equipment-category" required><option value="">Selecione...</option>${categoryOptions}</select>
+                    <label for="componente-grande-area">Grande Área:</label>
+                    <select id="componente-grande-area" required><option value="">Selecione...</option>${grandeAreaOptions}</select>
                 </div>
                 <div class="form-group">
-                    <label for="equipment-subcategory">Subcategoria:</label>
-                    <select id="equipment-subcategory" required disabled><option value="">Selecione uma categoria primeiro</option></select>
+                    <label for="componente-sistema">Sistema (Plano de Manutenção):</label>
+                    <select id="componente-sistema" required disabled><option value="">Selecione uma grande área primeiro</option></select>
                 </div>
                 <div class="form-group">
-                    <label for="equipment-name">Nome do Equipamento:</label>
-                    <input type="text" id="equipment-name" value="${nome}" required>
+                    <label for="componente-name">Nome do Componente (Identificação Única):</label>
+                    <input type="text" id="componente-name" value="${nome}" required>
                 </div>
                 <div class="form-group">
-                    <label for="equipment-local">Local:</label>
-                    <input type="text" id="equipment-local" value="${local}">
+                    <label for="componente-criticidade">Criticidade:</label>
+                    <select id="componente-criticidade">${criticidadeOptions}</select>
                 </div>
-                <div class="form-group ${isNew ? 'hidden' : ''}" id="date-input-group">
-                    <label for="equipment-last-maintenance" id="date-label">${dateLabel}</label>
-                    <input type="date" id="equipment-last-maintenance" value="${dataUltimaManutencao}" required>
+                <fieldset class="location-fieldset">
+                    <legend>Localização</legend>
+                    <div class="form-layout">
+                        <div class="form-group">
+                            <label for="componente-edificio">Edifício:</label>
+                            <input type="text" id="componente-edificio" value="${edificio}">
+                        </div>
+                        <div class="form-group">
+                            <label for="componente-andar">Andar/Piso:</label>
+                            <input type="text" id="componente-andar" value="${andar}">
+                        </div>
+                        <div class="form-group">
+                            <label for="componente-sala">Sala/Ambiente:</label>
+                            <input type="text" id="componente-sala" value="${sala}">
+                        </div>
+                        <div class="form-group">
+                            <label for="componente-complemento">Complemento do Local:</label>
+                            <input type="text" id="componente-complemento" value="${complemento}">
+                        </div>
+                    </div>
+                </fieldset>
+                <div class="form-group">
+                    <label for="componente-data-inicio">Data de Início das Manutenções:</label>
+                    <input type="date" id="componente-data-inicio" value="${dataInicio}" required>
+                    <small>Primeira data a ser usada como base para agendamentos se não houver histórico.</small>
                 </div>
                 <div id="inherited-info-container" class="inherited-info-container" style="display: none;"></div>
+                <div class="form-group">
+                    <label>Tarefas Específicas (Opcional):</label>
+                    <div class="checklist-container" id="specific-tasks-container">${tarefasItems}</div>
+                    <button type="button" class="btn btn-secondary" data-action="add-checklist-item"><i class="fas fa-plus"></i> Adicionar Tarefa Específica</button>
+                </div>
             </form>
         `;
     }
-    function updateSubcategoryOptions(categoryId, selectedSubcategoryId = null) {
-        const subcatSelect = document.getElementById('equipment-subcategory');
-        const filteredSubcats = MOCK_DATA.subcategorias.filter(s => s.categoriaId === categoryId);
-        if (filteredSubcats.length > 0) {
-            subcatSelect.innerHTML = '<option value="">Selecione...</option>' + filteredSubcats.map(s => `<option value="${s.id}" ${s.id === selectedSubcategoryId ? 'selected' : ''}>${s.nome}</option>`).join('');
-            subcatSelect.disabled = false;
+    function updateSistemaOptions(grandeAreaId, selectedSistemaId = null) {
+        const sistemaSelect = document.getElementById('componente-sistema');
+        const filteredSistemas = MOCK_DATA.sistemas.filter(s => s.grandeAreaId === grandeAreaId);
+        if (filteredSistemas.length > 0) {
+            sistemaSelect.innerHTML = '<option value="">Selecione...</option>' + filteredSistemas.map(s => `<option value="${s.id}" ${s.id === selectedSistemaId ? 'selected' : ''}>${s.nome}</option>`).join('');
+            sistemaSelect.disabled = false;
         } else {
-            subcatSelect.innerHTML = '<option value="">Nenhuma subcategoria encontrada</option>';
-            subcatSelect.disabled = true;
+            sistemaSelect.innerHTML = '<option value="">Nenhum sistema encontrado</option>';
+            sistemaSelect.disabled = true;
         }
     }
-    function updateInheritedInfo(subcategoryId) {
+    function updateInheritedInfo(sistemaId) {
         const infoContainer = document.getElementById('inherited-info-container');
-        const subcategory = MOCK_DATA.subcategorias.find(s => s.id === subcategoryId);
-        if (subcategory) {
-            const checklistHtml = subcategory.checklist.length > 0 ? `<ul>${subcategory.checklist.map(item => `<li>${item}</li>`).join('')}</ul>` : '<p>Nenhum procedimento cadastrado.</p>';
-            infoContainer.innerHTML = `<h5>Informações Herdeiras da Subcategoria</h5><p><strong>Periodicidade:</strong> ${subcategory.periodicidade}</p><p><strong>Procedimentos Padrão:</strong></p>${checklistHtml}`;
+        const sistema = MOCK_DATA.sistemas.find(s => s.id === sistemaId);
+        if (sistema) {
+            const checklistHtml = sistema.checklist.length > 0 ? `<ul>${sistema.checklist.map(item => `<li>${item.tarefa} (<strong>${item.periodicidade}</strong>)</li>`).join('')}</ul>` : '<p>Nenhuma tarefa padrão cadastrada.</p>';
+            infoContainer.innerHTML = `<h5>Informações Herdadas do Sistema "${sistema.nome}"</h5><p><strong>Área Responsável:</strong> ${sistema.areaResponsavel}</p><p><strong>Tarefas Padrão:</strong></p>${checklistHtml}`;
             infoContainer.style.display = 'block';
         } else {
             infoContainer.style.display = 'none';
             infoContainer.innerHTML = '';
         }
     }
-    function handleAddEquipment() {
+    function handleAddComponente() {
         editingItemId = null;
-        const formHtml = getEquipmentFormHTML();
-        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-equipment">Salvar</button>`;
-        showModal('Novo Equipamento', formHtml, footerHtml);
+        const formHtml = getComponenteFormHTML({ dataInicio: new Date().toISOString().slice(0, 10) });
+        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-componente">Salvar</button>`;
+        showModal('Novo Componente', formHtml, footerHtml);
     }
-    function handleEditEquipment(id) {
+    function handleEditComponente(id) {
         editingItemId = id;
-        const equipment = MOCK_DATA.equipamentos.find(e => e.id === id);
-        if (!equipment) return;
-        const formHtml = getEquipmentFormHTML(equipment);
-        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-equipment">Salvar Alterações</button>`;
-        showModal('Editar Equipamento', formHtml, footerHtml);
-        updateSubcategoryOptions(equipment.categoriaId, equipment.subcategoriaId);
-        updateInheritedInfo(equipment.subcategoriaId);
+        const componente = MOCK_DATA.componentes.find(c => c.id === id);
+        if (!componente) return;
+        const formHtml = getComponenteFormHTML(componente);
+        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-componente">Salvar Alterações</button>`;
+        showModal('Editar Componente', formHtml, footerHtml);
+        updateSistemaOptions(componente.grandeAreaId, componente.sistemaId);
+        updateInheritedInfo(componente.sistemaId);
     }
-    function handleDeleteEquipment(id) {
+    function handleDeleteComponente(id) {
         editingItemId = id;
-        const equipment = MOCK_DATA.equipamentos.find(e => e.id === id);
-        if (!equipment) return;
-        const bodyHtml = `<p>Você tem certeza que deseja excluir o equipamento <strong>"${equipment.nome}"</strong>?</p>`;
-        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-danger" data-action="confirm-delete-equipment">Confirmar Exclusão</button>`;
+        const componente = MOCK_DATA.componentes.find(c => c.id === id);
+        if (!componente) return;
+        const bodyHtml = `<p>Você tem certeza que deseja excluir o componente <strong>"${componente.nome}"</strong> e todo o seu histórico de manutenção?</p>`;
+        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-danger" data-action="confirm-delete-componente">Confirmar Exclusão</button>`;
         showModal('Confirmar Exclusão', bodyHtml, footerHtml);
     }
-    function saveEquipment() {
-        const categoriaId = parseInt(document.getElementById('equipment-category').value);
-        const subcategoriaId = parseInt(document.getElementById('equipment-subcategory').value);
-        const nome = document.getElementById('equipment-name').value.trim();
-        const local = document.getElementById('equipment-local').value.trim();
-        const dataUltimaManutencao = document.getElementById('equipment-last-maintenance').value;
-        const situationRadio = document.querySelector('input[name="equipment-situation"]:checked');
-
-        if (editingItemId) { // Modo Edição
-            if (!categoriaId || !subcategoriaId || !nome || !dataUltimaManutencao) { alert('Todos os campos, exceto Local, são obrigatórios.'); return; }
-            const data = { categoriaId, subcategoriaId, nome, local, dataUltimaManutencao };
-            const equipment = MOCK_DATA.equipamentos.find(e => e.id === editingItemId);
-            if (equipment.dataUltimaManutencao !== data.dataUltimaManutencao) {
-                const newHistoryId = MOCK_DATA.historicoManutencoes.length > 0 ? Math.max(...MOCK_DATA.historicoManutencoes.map(h => h.id)) + 1 : 1;
-                MOCK_DATA.historicoManutencoes.push({ id: newHistoryId, equipamentoId: editingItemId, data: data.dataUltimaManutencao, observacao: 'Data ajustada manualmente' });
-            }
-            Object.assign(equipment, data);
-        } else { // Modo Adição
-            if (!situationRadio) { alert('Por favor, selecione a situação do equipamento.'); return; }
-            if (!categoriaId || !subcategoriaId || !nome || !dataUltimaManutencao) { alert('Todos os campos, exceto Local, são obrigatórios.'); return; }
-            
-            const situation = situationRadio.value;
-            const data = { categoriaId, subcategoriaId, nome, local, dataUltimaManutencao };
-            const newId = MOCK_DATA.equipamentos.length > 0 ? Math.max(...MOCK_DATA.equipamentos.map(e => e.id)) + 1 : 1;
-            MOCK_DATA.equipamentos.push({ id: newId, ...data });
-
-            if (situation === 'existing') {
-                const newHistoryId = MOCK_DATA.historicoManutencoes.length > 0 ? Math.max(...MOCK_DATA.historicoManutencoes.map(h => h.id)) + 1 : 1;
-                MOCK_DATA.historicoManutencoes.push({ id: newHistoryId, equipamentoId: newId, data: data.dataUltimaManutencao, observacao: 'Registro inicial de manutenção existente' });
-            }
+    function saveComponente() {
+        const grandeAreaId = parseInt(document.getElementById('componente-grande-area').value);
+        const sistemaId = parseInt(document.getElementById('componente-sistema').value);
+        const nome = document.getElementById('componente-name').value.trim();
+        const criticidade = document.getElementById('componente-criticidade').value;
+        const edificio = document.getElementById('componente-edificio').value.trim();
+        const andar = document.getElementById('componente-andar').value.trim();
+        const sala = document.getElementById('componente-sala').value.trim();
+        const complemento = document.getElementById('componente-complemento').value.trim();
+        const dataInicio = document.getElementById('componente-data-inicio').value;
+        const specificTaskItems = document.querySelectorAll('#specific-tasks-container .checklist-item');
+        const tarefasEspecificas = Array.from(specificTaskItems).map((item, index) => {
+            const tarefa = item.querySelector('.checklist-item-input').value.trim();
+            const periodicidade = item.querySelector('.checklist-item-periodicity').value;
+            if (!tarefa) return null;
+            const idPrefix = editingItemId ? `c${editingItemId}` : 'new';
+            const id = `${idPrefix}-t${Date.now() + index}`;
+            return { id, tarefa, periodicidade };
+        }).filter(Boolean);
+        if (!grandeAreaId || !sistemaId || !nome || !dataInicio) { alert('Grande Área, Sistema, Nome e Data de Início são obrigatórios.'); return; }
+        const data = { grandeAreaId, sistemaId, nome, criticidade, edificio, andar, sala, complemento, dataInicio, tarefasEspecificas };
+        if (editingItemId) {
+            const componente = MOCK_DATA.componentes.find(c => c.id === editingItemId);
+            data.tarefasEspecificas.forEach((newTask) => {
+                const existingTask = componente.tarefasEspecificas.find(oldTask => oldTask.tarefa === newTask.tarefa);
+                if (existingTask) newTask.id = existingTask.id;
+            });
+            Object.assign(componente, data);
+        } else {
+            const newId = MOCK_DATA.componentes.length > 0 ? Math.max(...MOCK_DATA.componentes.map(c => c.id)) + 1 : 1;
+            MOCK_DATA.componentes.push({ id: newId, ...data });
         }
-        renderListaEquipamentos();
+        renderListaComponentes();
         closeModal();
     }
-    function confirmDeleteEquipment() {
-        MOCK_DATA.equipamentos = MOCK_DATA.equipamentos.filter(e => e.id !== editingItemId);
-        MOCK_DATA.historicoManutencoes = MOCK_DATA.historicoManutencoes.filter(h => h.equipamentoId !== editingItemId);
-        renderListaEquipamentos();
+    function confirmDeleteComponente() {
+        MOCK_DATA.componentes = MOCK_DATA.componentes.filter(c => c.id !== editingItemId);
+        MOCK_DATA.historicoManutencoes = MOCK_DATA.historicoManutencoes.filter(h => h.componenteId !== editingItemId);
+        renderListaComponentes();
         closeModal();
     }
 
     // --- FUNÇÕES DE RENDERIZAÇÃO ---
     const renderers = {
         'screen-painel': renderPainelManutencao,
-        'screen-lista-equipamentos': renderListaEquipamentos,
-        'screen-lista-categorias': renderListaCategorias,
-        'screen-lista-subcategorias': renderListaSubcategorias,
+        'screen-lista-componentes': renderListaComponentes,
+        'screen-lista-grandes-areas': renderListaGrandesAreas,
+        'screen-lista-sistemas': renderListaSistemas,
         'screen-manutencoes': renderMaintenancesScreen,
         'screen-configuracoes': () => {},
     };
 
     function renderPainelManutencao() {
-        const allMaintenances = generateUpcomingMaintenances();
+        const allTasks = generateTaskInstances();
         const painelTitle = document.getElementById('painel-main-title');
         const clearFilterBtn = document.getElementById('clear-filter-btn');
+    
+        const inicioMes = new Date(today.getFullYear(), today.getMonth(), 1);
+        const fimMes = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        fimMes.setHours(23, 59, 59, 999);
+    
+        const inicioProximoMes = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+        const fimProximoMes = new Date(today.getFullYear(), today.getMonth() + 2, 0);
+        fimProximoMes.setHours(23, 59, 59, 999);
+    
         if (activeDateFilter) {
             const dataFormatada = new Date(activeDateFilter + 'T12:00:00').toLocaleDateString('pt-BR');
             painelTitle.textContent = `Tarefas para ${dataFormatada}`;
             clearFilterBtn.style.display = 'block';
-            const maintenancesOnDay = allMaintenances.filter(m => m.date.toISOString().slice(0, 10) === activeDateFilter);
-            renderMaintenanceListToPanel(document.querySelector('#alertas-criticas .lista-os'), maintenancesOnDay.filter(m => m.status === 'Atrasada'), 'status-critica');
-            renderMaintenanceListToPanel(document.querySelector('#alertas-mes .lista-os'), maintenancesOnDay.filter(m => m.status === 'A vencer'), 'status-mes');
-            document.querySelector('#alertas-proximo-mes .lista-os').innerHTML = '<li>Filtro de data ativo.</li>';
-            renderCalendar(currentDate);
+    
+            const tasksOnDay = allTasks.filter(t => t.date.toISOString().slice(0, 10) === activeDateFilter);
+    
+            const criticasDoDia = tasksOnDay.filter(t => t.status === 'Atrasada');
+            const mesDoDia = tasksOnDay.filter(t => t.status === 'A vencer' && t.date >= inicioMes && t.date <= fimMes);
+            const proximoMesDoDia = tasksOnDay.filter(t => t.status === 'A vencer' && t.date >= inicioProximoMes && t.date <= fimProximoMes);
+    
+            renderTaskListToPanel(document.querySelector('#alertas-criticas .lista-os'), criticasDoDia, 'status-critica');
+            renderTaskListToPanel(document.querySelector('#alertas-mes .lista-os'), mesDoDia, 'status-mes');
+            renderTaskListToPanel(document.querySelector('#alertas-proximo-mes .lista-os'), proximoMesDoDia, 'status-proximo-mes');
+            
+            renderCalendar();
             return;
         }
-        painelTitle.textContent = 'Painel de Manutenção';
+    
+        painelTitle.textContent = 'Painel de Tarefas';
         clearFilterBtn.style.display = 'none';
-        const criticas = allMaintenances.filter(m => m.status === 'Atrasada');
-        const inicioMes = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-        const fimMes = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-        const mes = allMaintenances.filter(m => m.status === 'A vencer' && m.date >= inicioMes && m.date <= fimMes);
-        const inicioProximoMes = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
-        const fimProximoMes = new Date(currentDate.getFullYear(), currentDate.getMonth() + 2, 0);
-        const proximoMes = allMaintenances.filter(m => m.status === 'A vencer' && m.date >= inicioProximoMes && m.date <= fimProximoMes);
-        renderMaintenanceListToPanel(document.querySelector('#alertas-criticas .lista-os'), criticas, 'status-critica');
-        renderMaintenanceListToPanel(document.querySelector('#alertas-mes .lista-os'), mes, 'status-mes');
-        renderMaintenanceListToPanel(document.querySelector('#alertas-proximo-mes .lista-os'), proximoMes, 'status-proximo-mes');
-        renderCalendar(currentDate);
+    
+        const criticas = allTasks.filter(t => t.status === 'Atrasada');
+        const mes = allTasks.filter(t => t.status === 'A vencer' && t.date >= inicioMes && t.date <= fimMes);
+        const proximoMes = allTasks.filter(t => t.status === 'A vencer' && t.date >= inicioProximoMes && t.date <= fimProximoMes);
+    
+        renderTaskListToPanel(document.querySelector('#alertas-criticas .lista-os'), criticas, 'status-critica');
+        renderTaskListToPanel(document.querySelector('#alertas-mes .lista-os'), mes, 'status-mes');
+        renderTaskListToPanel(document.querySelector('#alertas-proximo-mes .lista-os'), proximoMes, 'status-proximo-mes');
+        renderCalendar();
     }
 
-    function renderMaintenanceListToPanel(ulElement, maintenanceList, cssClass) {
+    function renderTaskListToPanel(ulElement, taskList, cssClass) {
         ulElement.innerHTML = '';
-        if (maintenanceList.length === 0) {
+        if (taskList.length === 0) {
             ulElement.innerHTML = '<li>Nenhuma tarefa encontrada.</li>';
             return;
         }
-        maintenanceList.forEach(m => {
-            const li = document.createElement('li');
-            li.className = cssClass;
-            li.dataset.action = 'complete-maintenance';
-            li.dataset.equipmentId = m.equipmentId;
-            li.innerHTML = `<strong>${m.equipmentName}</strong><br><small>Vence em: ${m.date.toLocaleDateString('pt-BR')}</small>`;
-            ulElement.appendChild(li);
+        const groupedByComponent = taskList.reduce((acc, task) => {
+            if (!acc[task.componenteId]) {
+                acc[task.componenteId] = { name: task.componenteName, tasks: [] };
+            }
+            acc[task.componenteId].tasks.push(task);
+            return acc;
+        }, {});
+        Object.values(groupedByComponent).forEach(group => {
+            group.tasks.sort((a, b) => a.date - b.date);
+            const groupLi = document.createElement('li');
+            groupLi.className = `task-group ${cssClass}`;
+            const header = document.createElement('div');
+            header.className = 'task-group-header';
+            header.dataset.action = 'toggle-task-group';
+            header.innerHTML = `<span class="component-name">${group.name}</span>
+                                <span class="task-count">${group.tasks.length} tarefa(s)</span>
+                                <i class="fas fa-chevron-down expand-icon"></i>`;
+            const sublist = document.createElement('ul');
+            sublist.className = 'task-sublist';
+            group.tasks.forEach(t => {
+                const taskLi = document.createElement('li');
+                taskLi.className = 'task-item';
+                taskLi.dataset.action = 'complete-task';
+                taskLi.dataset.componenteId = t.componenteId;
+                taskLi.dataset.tarefaId = t.tarefaId;
+                taskLi.innerHTML = `<small>${t.tarefaDescricao}</small><br><small>Vence em: ${t.date.toLocaleDateString('pt-BR')}</small>`;
+                sublist.appendChild(taskLi);
+            });
+            groupLi.appendChild(header);
+            groupLi.appendChild(sublist);
+            ulElement.appendChild(groupLi);
         });
     }
     
-    function renderListaCategorias() {
-        const tbody = document.querySelector('#screen-lista-categorias tbody');
+    function renderListaGrandesAreas() {
+        const tbody = document.querySelector('#screen-lista-grandes-areas tbody');
         tbody.innerHTML = '';
-        MOCK_DATA.categorias.forEach(cat => {
+        MOCK_DATA.grandesAreas.forEach(ga => {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td>${cat.nome}</td><td class="actions"><a href="#" title="Editar" data-action="edit-category" data-id="${cat.id}"><i class="fas fa-pencil-alt"></i></a><a href="#" title="Excluir" data-action="delete-category" data-id="${cat.id}"><i class="fas fa-trash-alt"></i></a></td>`;
+            tr.innerHTML = `<td>${ga.nome}</td><td class="actions"><a href="#" title="Editar" data-action="edit-grande-area" data-id="${ga.id}"><i class="fas fa-pencil-alt"></i></a><a href="#" title="Excluir" data-action="delete-grande-area" data-id="${ga.id}"><i class="fas fa-trash-alt"></i></a></td>`;
             tbody.appendChild(tr);
         });
     }
     
-    function renderListaSubcategorias() {
-        const tbody = document.querySelector('#screen-lista-subcategorias tbody');
+    function renderListaSistemas() {
+        const tbody = document.querySelector('#screen-lista-sistemas tbody');
         tbody.innerHTML = '';
-        MOCK_DATA.subcategorias.forEach(sub => {
-            const categoriaPai = MOCK_DATA.categorias.find(c => c.id === sub.categoriaId);
+        MOCK_DATA.sistemas.forEach(sis => {
+            const grandeAreaPai = MOCK_DATA.grandesAreas.find(g => g.id === sis.grandeAreaId);
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td>${sub.nome}</td><td>${categoriaPai ? categoriaPai.nome : 'N/A'}</td><td>${sub.periodicidade}</td><td class="actions"><a href="#" title="Editar" data-action="edit-subcategory" data-id="${sub.id}"><i class="fas fa-pencil-alt"></i></a><a href="#" title="Excluir" data-action="delete-subcategory" data-id="${sub.id}"><i class="fas fa-trash-alt"></i></a></td>`;
+            tr.innerHTML = `<td>${sis.nome}</td><td>${grandeAreaPai ? grandeAreaPai.nome : 'N/A'}</td><td>${sis.areaResponsavel || 'N/A'}</td><td class="actions"><a href="#" title="Editar" data-action="edit-sistema" data-id="${sis.id}"><i class="fas fa-pencil-alt"></i></a><a href="#" title="Excluir" data-action="delete-sistema" data-id="${sis.id}"><i class="fas fa-trash-alt"></i></a></td>`;
             tbody.appendChild(tr);
         });
     }
 
-    function renderListaEquipamentos() {
-        const tbody = document.querySelector('#screen-lista-equipamentos tbody');
+    function renderListaComponentes() {
+        const tbody = document.querySelector('#screen-lista-componentes tbody');
         tbody.innerHTML = '';
-        MOCK_DATA.equipamentos.forEach(eq => {
-            const categoria = MOCK_DATA.categorias.find(c => c.id === eq.categoriaId);
-            const subcategoria = MOCK_DATA.subcategorias.find(s => s.id === eq.subcategoriaId);
+        MOCK_DATA.componentes.forEach(comp => {
+            const grandeArea = MOCK_DATA.grandesAreas.find(g => g.id === comp.grandeAreaId);
+            const sistema = MOCK_DATA.sistemas.find(s => s.id === comp.sistemaId);
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td>${eq.nome}</td><td>${categoria ? categoria.nome : 'N/A'}</td><td>${subcategoria ? subcategoria.nome : 'N/A'}</td><td>${eq.local}</td><td>${subcategoria ? subcategoria.periodicidade : 'N/A'}</td><td class="actions"><a href="#" title="Editar" data-action="edit-equipment" data-id="${eq.id}"><i class="fas fa-pencil-alt"></i></a><a href="#" title="Excluir" data-action="delete-equipment" data-id="${eq.id}"><i class="fas fa-trash-alt"></i></a></td>`;
+            tr.innerHTML = `<td>${comp.nome}</td><td>${grandeArea ? grandeArea.nome : 'N/A'}</td><td>${sistema ? sistema.nome : 'N/A'}</td><td>${comp.criticidade}</td><td class="actions"><a href="#" title="Editar" data-action="edit-componente" data-id="${comp.id}"><i class="fas fa-pencil-alt"></i></a><a href="#" title="Excluir" data-action="delete-componente" data-id="${comp.id}"><i class="fas fa-trash-alt"></i></a></td>`;
             tbody.appendChild(tr);
         });
     }
 
-    function renderCalendar(date) {
+    function renderCalendar() {
         const calendarContainer = document.getElementById('painel-calendario');
         calendarContainer.innerHTML = '';
-        const month = date.getMonth();
-        const year = date.getFullYear();
+        const month = calendarDate.getMonth();
+        const year = calendarDate.getFullYear();
         const firstDayOfMonth = new Date(year, month, 1).getDay();
         const daysInMonth = new Date(year, month + 1, 0).getDate();
         const header = document.createElement('div');
         header.className = 'calendar-header';
-        header.innerHTML = `<h3>${date.toLocaleString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase()}</h3><div class="calendar-nav"><button id="prev-month"><i class="fas fa-chevron-left"></i></button><button id="next-month"><i class="fas fa-chevron-right"></i></button></div>`;
+        header.innerHTML = `<h3>${calendarDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase()}</h3><div class="calendar-nav"><button id="prev-month"><i class="fas fa-chevron-left"></i></button><button id="next-month"><i class="fas fa-chevron-right"></i></button></div>`;
         calendarContainer.appendChild(header);
         const grid = document.createElement('div');
         grid.className = 'calendar-grid';
@@ -476,20 +568,20 @@ document.addEventListener('DOMContentLoaded', () => {
             dayCell.className = 'calendar-day';
             dayCell.textContent = i;
             dayCell.dataset.date = dateString;
-            if (dateString === currentDate.toISOString().slice(0, 10)) dayCell.classList.add('today');
+            if (dateString === today.toISOString().slice(0, 10)) dayCell.classList.add('today');
             if (dateString === activeDateFilter) dayCell.classList.add('filtered');
             grid.appendChild(dayCell);
         }
         calendarContainer.appendChild(grid);
         populateCalendarWithTasks();
-        document.getElementById('prev-month').addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() - 1); renderCalendar(currentDate); });
-        document.getElementById('next-month').addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() + 1); renderCalendar(currentDate); });
+        document.getElementById('prev-month').addEventListener('click', () => { calendarDate.setMonth(calendarDate.getMonth() - 1); renderPainelManutencao(); });
+        document.getElementById('next-month').addEventListener('click', () => { calendarDate.setMonth(calendarDate.getMonth() + 1); renderPainelManutencao(); });
     }
 
     function populateCalendarWithTasks() {
-        const maintenances = generateUpcomingMaintenances();
-        maintenances.forEach(m => {
-            const dateStr = m.date.toISOString().slice(0, 10);
+        const tasks = generateTaskInstances();
+        tasks.forEach(t => {
+            const dateStr = t.date.toISOString().slice(0, 10);
             const dayCell = document.querySelector(`.calendar-day[data-date="${dateStr}"]`);
             if (dayCell && !dayCell.querySelector('.task-dot')) {
                 dayCell.classList.add('has-tasks');
@@ -497,41 +589,26 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-
-    // --- LÓGICA DA TELA DE MANUTENÇÕES ---
-    function renderMaintenancesScreen() {
-        populateMaintenanceFilters();
-        applyFiltersAndRenderTable();
-    }
-
-    function populateMaintenanceFilters() {
-        const catSelect = document.getElementById('filter-categoria');
-        catSelect.innerHTML = '<option value="">Todas</option>' + MOCK_DATA.categorias.map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
-        document.getElementById('filter-subcategoria').innerHTML = '<option value="">Todas</option>';
-        document.getElementById('filter-subcategoria').disabled = true;
-        document.getElementById('filter-equipamento').innerHTML = '<option value="">Todos</option>';
-        document.getElementById('filter-equipamento').disabled = true;
-    }
-
+    
     function applyFiltersAndRenderTable() {
-        let maintenances = getAllMaintenancesForDisplay();
+        let tasks = getAllMaintenanceTasksForDisplay();
         const filters = {
-            categoryId: parseInt(document.getElementById('filter-categoria').value),
-            subcategoryId: parseInt(document.getElementById('filter-subcategoria').value),
-            equipmentId: parseInt(document.getElementById('filter-equipamento').value),
+            grandeAreaId: parseInt(document.getElementById('filter-grande-area').value),
+            sistemaId: parseInt(document.getElementById('filter-sistema').value),
+            componenteId: parseInt(document.getElementById('filter-componente').value),
             status: document.getElementById('filter-status').value,
             startDate: document.getElementById('filter-data-inicio').value,
             endDate: document.getElementById('filter-data-fim').value,
         };
-
-        if (filters.categoryId) maintenances = maintenances.filter(m => m.categoryId === filters.categoryId);
-        if (filters.subcategoryId) maintenances = maintenances.filter(m => m.subcategoryId === filters.subcategoryId);
-        if (filters.equipmentId) maintenances = maintenances.filter(m => m.equipmentId === filters.equipmentId);
-        if (filters.status) maintenances = maintenances.filter(m => m.status === filters.status);
-        if (filters.startDate) maintenances = maintenances.filter(m => m.date >= new Date(filters.startDate + 'T00:00:00'));
-        if (filters.endDate) maintenances = maintenances.filter(m => m.date <= new Date(filters.endDate + 'T23:59:59'));
-
-        maintenances.sort((a, b) => {
+    
+        if (filters.grandeAreaId) tasks = tasks.filter(t => t.grandeAreaId === filters.grandeAreaId);
+        if (filters.sistemaId) tasks = tasks.filter(t => t.sistemaId === filters.sistemaId);
+        if (filters.componenteId) tasks = tasks.filter(t => t.componenteId === filters.componenteId);
+        if (filters.status) tasks = tasks.filter(t => t.status === filters.status);
+        if (filters.startDate) tasks = tasks.filter(t => t.date >= new Date(filters.startDate + 'T00:00:00'));
+        if (filters.endDate) tasks = tasks.filter(t => t.date <= new Date(filters.endDate + 'T23:59:59'));
+    
+        tasks.sort((a, b) => {
             const valA = a[sortColumn];
             const valB = b[sortColumn];
             let comparison = 0;
@@ -545,23 +622,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const tbody = document.getElementById('maintenance-table-body');
         tbody.innerHTML = '';
-        maintenances.forEach(m => {
-            const statusClass = m.status === 'A vencer' ? 'pendente' : m.status.toLowerCase().replace('í', 'i');
+        tasks.forEach(t => {
+            const statusClass = t.status === 'A vencer' ? 'pendente' : t.status.toLowerCase().replace('í', 'i');
             const tr = document.createElement('tr');
-            const dateText = m.status === 'Concluída' ? `Realizada em: ${m.date.toLocaleDateString('pt-BR')}` : m.date.toLocaleDateString('pt-BR');
-            
+            const dateText = t.status === 'Concluída' ? `Realizada em: ${t.date.toLocaleDateString('pt-BR')}` : t.date.toLocaleDateString('pt-BR');
             let actionButton;
-            if (m.status === 'Concluída') {
-                actionButton = `<button class="btn btn-secondary" data-action="revert-maintenance" data-history-id="${m.historyId}"><i class="fas fa-undo"></i> Reverter</button>`;
+            if (t.status === 'Concluída') {
+                actionButton = `<button class="btn btn-secondary" data-action="revert-task" data-history-id="${t.historyId}"><i class="fas fa-undo"></i> Reverter</button>`;
             } else {
-                actionButton = `<button class="btn btn-primary" data-action="complete-maintenance" data-equipment-id="${m.equipmentId}"><i class="fas fa-check"></i> Concluir</button>`;
+                actionButton = `<button class="btn btn-primary" data-action="complete-task" data-componente-id="${t.componenteId}" data-tarefa-id="${t.tarefaId}"><i class="fas fa-check"></i> Concluir</button>`;
             }
-
             tr.innerHTML = `
-                <td>${m.equipmentName}</td>
-                <td>${m.categoryName}</td>
+                <td>${t.componenteName}</td>
+                <td>${t.tarefaDescricao}</td>
+                <td>${t.criticidade}</td>
                 <td>${dateText}</td>
-                <td><span class="status-badge ${statusClass}">${m.status}</span></td>
+                <td><span class="status-badge ${statusClass}">${t.status}</span></td>
                 <td class="actions">${actionButton}</td>
             `;
             tbody.appendChild(tr);
@@ -569,6 +645,20 @@ document.addEventListener('DOMContentLoaded', () => {
         updateSortIcons();
     }
     
+    function renderMaintenancesScreen() {
+        populateMaintenanceFilters();
+        applyFiltersAndRenderTable();
+    }
+
+    function populateMaintenanceFilters() {
+        const gaSelect = document.getElementById('filter-grande-area');
+        gaSelect.innerHTML = '<option value="">Todas</option>' + MOCK_DATA.grandesAreas.map(g => `<option value="${g.id}">${g.nome}</option>`).join('');
+        document.getElementById('filter-sistema').innerHTML = '<option value="">Todos</option>';
+        document.getElementById('filter-sistema').disabled = true;
+        document.getElementById('filter-componente').innerHTML = '<option value="">Todos</option>';
+        document.getElementById('filter-componente').disabled = true;
+    }
+
     function updateSortIcons() {
         document.querySelectorAll('#maintenance-table th.sortable').forEach(th => {
             th.classList.remove('sorted-asc', 'sorted-desc');
@@ -578,68 +668,179 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function handleCompleteMaintenance(equipmentId) {
-        editingItemId = equipmentId;
-        const equipment = MOCK_DATA.equipamentos.find(e => e.id === equipmentId);
-        if (!equipment) return;
-        const todayStr = currentDate.toISOString().slice(0, 10);
+    function handleCompleteTask(componenteId, tarefaId) {
+        editingItemId = { componenteId, tarefaId };
+        const componente = MOCK_DATA.componentes.find(c => c.id === componenteId);
+        const sistema = MOCK_DATA.sistemas.find(s => s.id === componente.sistemaId);
+        let tarefa = sistema.checklist.find(t => t.id === tarefaId);
+        if (!tarefa) {
+            tarefa = componente.tarefasEspecificas.find(t => t.id === tarefaId);
+        }
+        if (!componente || !tarefa) return;
+        const todayStr = today.toISOString().slice(0, 10);
         const bodyHtml = `
-            <form id="complete-maintenance-form">
-                <p>Equipamento: <strong>${equipment.nome}</strong></p>
+            <form id="complete-task-form">
+                <p><strong>Componente:</strong> ${componente.nome}</p>
+                <p><strong>Tarefa:</strong> ${tarefa.tarefa}</p>
                 <div class="form-group">
                     <label for="completion-date">Data de Realização:</label>
                     <input type="date" id="completion-date" value="${todayStr}" required>
                 </div>
-                 <div class="form-group">
+                <div class="form-group">
+                    <label for="completion-os">Nº da Ordem de Serviço (OS):</label>
+                    <input type="text" id="completion-os" placeholder="Referência da OS externa">
+                </div>
+                <div class="form-group">
                     <label for="completion-obs">Observações:</label>
-                    <textarea id="completion-obs" rows="3" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 5px; box-sizing: border-box;"></textarea>
+                    <textarea id="completion-obs" rows="3"></textarea>
                 </div>
             </form>
         `;
         const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-completion">Salvar Conclusão</button>`;
-        showModal('Concluir Manutenção', bodyHtml, footerHtml);
+        showModal('Concluir Tarefa de Manutenção', bodyHtml, footerHtml);
     }
 
     function saveCompletion() {
-        const equipmentId = editingItemId;
+        const { componenteId, tarefaId } = editingItemId;
         const completionDate = document.getElementById('completion-date').value;
+        const completionOs = document.getElementById('completion-os').value.trim();
         const completionObs = document.getElementById('completion-obs').value.trim();
         if (!completionDate) { alert('A data de realização é obrigatória.'); return; }
-        const equipment = MOCK_DATA.equipamentos.find(e => e.id === equipmentId);
-        if (equipment) {
-            equipment.dataUltimaManutencao = completionDate;
-            const newHistoryId = MOCK_DATA.historicoManutencoes.length > 0 ? Math.max(...MOCK_DATA.historicoManutencoes.map(h => h.id)) + 1 : 1;
-            MOCK_DATA.historicoManutencoes.push({
-                id: newHistoryId,
-                equipamentoId: equipmentId,
-                data: completionDate,
-                observacao: completionObs || 'Manutenção preventiva concluída.'
-            });
-        }
+        const newHistoryId = MOCK_DATA.historicoManutencoes.length > 0 ? Math.max(...MOCK_DATA.historicoManutencoes.map(h => h.id)) + 1 : 1;
+        MOCK_DATA.historicoManutencoes.push({
+            id: newHistoryId,
+            componenteId: componenteId,
+            tarefaId: tarefaId,
+            data: completionDate,
+            os: completionOs,
+            obs: completionObs || 'Tarefa concluída.'
+        });
         closeModal();
-        applyFiltersAndRenderTable();
+        if (renderers[activeScreen]) renderers[activeScreen]();
     }
 
-    function handleRevertMaintenance(historyId) {
+    function handleRevertTask(historyId) {
         editingItemId = historyId;
         const historyEntry = MOCK_DATA.historicoManutencoes.find(h => h.id === historyId);
         if (!historyEntry) return;
-        const bodyHtml = `<p>Você tem certeza que deseja reverter esta manutenção? O registro de conclusão será removido e a próxima manutenção será recalculada a partir da data anterior.</p>`;
-        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-danger" data-action="confirm-revert-maintenance">Confirmar Reversão</button>`;
-        showModal('Reverter Manutenção Concluída', bodyHtml, footerHtml);
+        const bodyHtml = `<p>Você tem certeza que deseja reverter esta conclusão? O registro será removido e a tarefa voltará a ser agendada com base na execução anterior.</p>`;
+        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-danger" data-action="confirm-revert-task">Confirmar Reversão</button>`;
+        showModal('Reverter Conclusão de Tarefa', bodyHtml, footerHtml);
     }
 
-    function confirmRevertMaintenance() {
-        const historyId = editingItemId;
-        const historyEntry = MOCK_DATA.historicoManutencoes.find(h => h.id === historyId);
-        if (!historyEntry) { closeModal(); return; }
-        
-        const equipmentId = historyEntry.equipamentoId;
-        MOCK_DATA.historicoManutencoes = MOCK_DATA.historicoManutencoes.filter(h => h.id !== historyId);
-        recalculateLastMaintenanceDate(equipmentId);
-        
+    function confirmRevertTask() {
+        MOCK_DATA.historicoManutencoes = MOCK_DATA.historicoManutencoes.filter(h => h.id !== editingItemId);
         closeModal();
-        applyFiltersAndRenderTable();
+        if (renderers[activeScreen]) renderers[activeScreen]();
+    }
+
+    function handleShowReportModal() {
+        const todayStr = today.toISOString().slice(0, 10);
+        const bodyHtml = `
+            <form id="report-form">
+                <p>Selecione o período para gerar o relatório de tarefas pendentes.</p>
+                <div class="form-layout">
+                    <div class="form-group">
+                        <label for="report-start-date">Data Inicial:</label>
+                        <input type="date" id="report-start-date" value="${todayStr}">
+                    </div>
+                    <div class="form-group">
+                        <label for="report-end-date">Data Final:</label>
+                        <input type="date" id="report-end-date">
+                    </div>
+                </div>
+            </form>
+        `;
+        const footerHtml = `
+            <button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button>
+            <button class="btn btn-primary" data-action="gerar-relatorio-confirmado">Gerar Relatório</button>
+        `;
+        showModal('Gerar Relatório de Manutenção', bodyHtml, footerHtml);
+    }
+
+    function generateReportPageHTML(tasks, period) {
+        const groupedByComponent = tasks.reduce((acc, task) => {
+            const componente = MOCK_DATA.componentes.find(c => c.id === task.componenteId);
+            if (!acc[task.componenteId]) {
+                acc[task.componenteId] = {
+                    name: task.componenteName,
+                    location: [componente.edificio, componente.andar, componente.sala, componente.complemento].filter(Boolean).join(', '),
+                    tasks: []
+                };
+            }
+            acc[task.componenteId].tasks.push(task);
+            return acc;
+        }, {});
+    
+        let reportHTML = `
+            <!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório de Manutenção Preventiva</title>
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px; color: #333; }
+                .report-container { max-width: 900px; margin: auto; }
+                header { text-align: center; border-bottom: 2px solid #0056b3; padding-bottom: 10px; margin-bottom: 20px; }
+                header h1 { margin: 0; color: #0056b3; } header p { margin: 5px 0; }
+                .component-section { margin-bottom: 30px; page-break-inside: avoid; }
+                .component-section h2 { background-color: #f4f6f9; padding: 10px; border-radius: 5px; margin-bottom: 5px; font-size: 1.2em; }
+                .component-section p { margin: 0 0 10px 10px; font-style: italic; color: #6c757d; }
+                table { width: 100%; border-collapse: collapse; }
+                th, td { border: 1px solid #dee2e6; padding: 8px; text-align: left; font-size: 0.9em; }
+                thead { background-color: #f8f9fa; } .obs-col { width: 35%; }
+                .print-button { display: block; margin: 20px auto; padding: 10px 20px; font-size: 16px; cursor: pointer; border-radius: 5px; border: 1px solid #0056b3; background-color: #0056b3; color: white; }
+                @media print { .print-button { display: none; } body { padding: 0; } }
+            </style></head><body><div class="report-container">
+                <header><h1>Plano de Manutenção Preventiva</h1><p>${period}</p><p>Gerado em: ${new Date().toLocaleString('pt-BR')}</p></header>
+                <button class="print-button" onclick="window.print()">Imprimir Relatório</button>`;
+    
+        for (const componentId in groupedByComponent) {
+            const group = groupedByComponent[componentId];
+            group.tasks.sort((a, b) => a.date - b.date);
+            reportHTML += `<div class="component-section"><h2>${group.name}</h2><p><strong>Localização:</strong> ${group.location}</p>
+                <table><thead><tr><th>Tarefa</th><th>Periodicidade</th><th>Data Prevista</th><th>Criticidade</th><th class="obs-col">Observações</th></tr></thead><tbody>`;
+            group.tasks.forEach(task => {
+                reportHTML += `<tr><td>${task.tarefaDescricao}</td><td>${task.periodicidade}</td><td>${task.date.toLocaleDateString('pt-BR')}</td><td>${task.criticidade}</td><td></td></tr>`;
+            });
+            reportHTML += `</tbody></table></div>`;
+        }
+    
+        reportHTML += `</div></body></html>`;
+    
+        const reportWindow = window.open('', '_blank');
+        reportWindow.document.write(reportHTML);
+        reportWindow.document.close();
+    }
+
+    function handleGenerateReportFromModal() {
+        const startDate = document.getElementById('report-start-date').value;
+        const endDate = document.getElementById('report-end-date').value;
+    
+        if (!startDate || !endDate) {
+            alert('Por favor, selecione a data inicial e a data final.');
+            return;
+        }
+        if (new Date(startDate) > new Date(endDate)) {
+            alert('A data inicial não pode ser posterior à data final.');
+            return;
+        }
+    
+        const allUpcomingTasks = generateTaskInstances();
+        const filteredTasks = allUpcomingTasks.filter(task => {
+            const taskDateOnly = new Date(task.date.toISOString().slice(0, 10) + 'T12:00:00');
+            const start = new Date(startDate + 'T12:00:00');
+            const end = new Date(endDate + 'T12:00:00');
+            return taskDateOnly >= start && taskDateOnly <= end;
+        });
+    
+        if (filteredTasks.length === 0) {
+            alert('Nenhuma tarefa pendente encontrada para o período selecionado.');
+            return;
+        }
+    
+        const startFormatted = new Date(startDate + 'T12:00:00').toLocaleDateString('pt-BR');
+        const endFormatted = new Date(endDate + 'T12:00:00').toLocaleDateString('pt-BR');
+        const period = `Período: ${startFormatted} a ${endFormatted}`;
+    
+        generateReportPageHTML(filteredTasks, period);
+        closeModal();
     }
 
     // --- NAVEGAÇÃO E EVENT LISTENERS GLOBAIS ---
@@ -668,66 +869,77 @@ document.addEventListener('DOMContentLoaded', () => {
         const dropdownLink = target.closest('.dropdown > a.nav-link');
         const calendarDay = target.closest('.calendar-day.has-tasks');
         const actionButton = target.closest('[data-action]');
-
         if (navLink) { e.preventDefault(); navigateTo(navLink.dataset.target); return; }
         if (dropdownLink) { e.preventDefault(); dropdownLink.parentElement.classList.toggle('open'); }
         if (calendarDay) { activeDateFilter = calendarDay.dataset.date; renderPainelManutencao(); }
-        
         if (actionButton) {
             e.preventDefault();
             const action = actionButton.dataset.action;
             const id = parseInt(actionButton.dataset.id);
-            const equipmentId = parseInt(actionButton.dataset.equipmentId);
             const historyId = parseInt(actionButton.dataset.historyId);
+            const componenteId = parseInt(actionButton.dataset.componenteId);
+            const tarefaId = actionButton.dataset.tarefaId;
             const startDateInput = document.getElementById('filter-data-inicio');
             const endDateInput = document.getElementById('filter-data-fim');
-            const today = new Date(currentDate);
-
+            const todayForFilters = new Date(today);
             switch(action) {
                 case 'voltar': navigateTo('screen-painel'); break;
-                case 'clear-filter': activeDateFilter = null; renderPainelManutencao(); break;
+                case 'clear-filter': activeDateFilter = null; calendarDate = new Date(today); renderPainelManutencao(); break;
                 case 'criar-backup': alert('Backup simulado com sucesso!'); break;
                 case 'restaurar-backup': if (confirm('Deseja simular a restauração?')) { alert('Dados restaurados! (Simulação)'); } break;
                 case 'cancel-modal': closeModal(); break;
-                case 'nova-categoria': handleAddCategory(); break;
-                case 'edit-category': handleEditCategory(id); break;
-                case 'delete-category': handleDeleteCategory(id); break;
-                case 'save-category': saveCategory(); break;
-                case 'confirm-delete-category': confirmDeleteCategory(); break;
-                case 'nova-subcategoria': handleAddSubcategory(); break;
-                case 'edit-subcategory': handleEditSubcategory(id); break;
-                case 'delete-subcategory': handleDeleteSubcategory(id); break;
-                case 'save-subcategory': saveSubcategory(); break;
-                case 'confirm-delete-subcategory': confirmDeleteSubcategory(); break;
-                case 'add-checklist-item': addChecklistItem(); break;
+                case 'nova-grande-area': handleAddGrandeArea(); break;
+                case 'edit-grande-area': handleEditGrandeArea(id); break;
+                case 'delete-grande-area': handleDeleteGrandeArea(id); break;
+                case 'save-grande-area': saveGrandeArea(); break;
+                case 'confirm-delete-grande-area': confirmDeleteGrandeArea(); break;
+                case 'novo-sistema': handleAddSistema(); break;
+                case 'edit-sistema': handleEditSistema(id); break;
+                case 'delete-sistema': handleDeleteSistema(id); break;
+                case 'save-sistema': saveSistema(); break;
+                case 'confirm-delete-sistema': confirmDeleteSistema(); break;
+                case 'add-checklist-item':
+                    const formGroup = actionButton.closest('.form-group');
+                    if (formGroup) {
+                        const container = formGroup.querySelector('.checklist-container');
+                        if (container) addChecklistItem(container);
+                    }
+                    break;
                 case 'remove-checklist-item': target.closest('.checklist-item').remove(); break;
-                case 'novo-equipamento': handleAddEquipment(); break;
-                case 'edit-equipment': handleEditEquipment(id); break;
-                case 'delete-equipment': handleDeleteEquipment(id); break;
-                case 'save-equipment': saveEquipment(); break;
-                case 'confirm-delete-equipment': confirmDeleteEquipment(); break;
-                case 'complete-maintenance': handleCompleteMaintenance(equipmentId); break;
+                case 'novo-componente': handleAddComponente(); break;
+                case 'edit-componente': handleEditComponente(id); break;
+                case 'delete-componente': handleDeleteComponente(id); break;
+                case 'save-componente': saveComponente(); break;
+                case 'confirm-delete-componente': confirmDeleteComponente(); break;
+                case 'complete-task': handleCompleteTask(componenteId, tarefaId); break;
                 case 'save-completion': saveCompletion(); break;
-                case 'revert-maintenance': handleRevertMaintenance(historyId); break;
-                case 'confirm-revert-maintenance': confirmRevertMaintenance(); break;
+                case 'revert-task': handleRevertTask(historyId); break;
+                case 'confirm-revert-task': confirmRevertTask(); break;
+                case 'toggle-task-group':
+                    const groupHeader = actionButton.closest('.task-group-header');
+                    if (groupHeader) {
+                        groupHeader.parentElement.classList.toggle('open');
+                    }
+                    break;
+                case 'gerar-relatorio': handleShowReportModal(); break;
+                case 'gerar-relatorio-confirmado': handleGenerateReportFromModal(); break;
                 case 'filter-week':
-                    const firstDayOfWeek = new Date(today.setDate(today.getDate() - today.getDay()));
-                    const lastDayOfWeek = new Date(today.setDate(today.getDate() - today.getDay() + 6));
+                    const firstDayOfWeek = new Date(todayForFilters.setDate(todayForFilters.getDate() - todayForFilters.getDay()));
+                    const lastDayOfWeek = new Date(todayForFilters.setDate(todayForFilters.getDate() - todayForFilters.getDay() + 6));
                     startDateInput.value = firstDayOfWeek.toISOString().slice(0, 10);
                     endDateInput.value = lastDayOfWeek.toISOString().slice(0, 10);
                     applyFiltersAndRenderTable();
                     break;
                 case 'filter-month':
-                    startDateInput.value = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
-                    endDateInput.value = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().slice(0, 10);
+                    startDateInput.value = new Date(todayForFilters.getFullYear(), todayForFilters.getMonth(), 1).toISOString().slice(0, 10);
+                    endDateInput.value = new Date(todayForFilters.getFullYear(), todayForFilters.getMonth() + 1, 0).toISOString().slice(0, 10);
                     applyFiltersAndRenderTable();
                     break;
-                case 'filter-quarter':
-                    const quarter = Math.floor(today.getMonth() / 3);
-                    const firstDate = new Date(today.getFullYear(), quarter * 3, 1);
-                    const lastDate = new Date(firstDate.getFullYear(), firstDate.getMonth() + 3, 0);
-                    startDateInput.value = firstDate.toISOString().slice(0, 10);
-                    endDateInput.value = lastDate.toISOString().slice(0, 10);
+                case 'filter-next-month':
+                    const nextMonthStart = new Date(todayForFilters.getFullYear(), todayForFilters.getMonth() + 1, 1);
+                    const nextMonthEnd = new Date(todayForFilters.getFullYear(), todayForFilters.getMonth() + 2, 0);
+                    startDateInput.value = nextMonthStart.toISOString().slice(0, 10);
+                    endDateInput.value = nextMonthEnd.toISOString().slice(0, 10);
                     applyFiltersAndRenderTable();
                     break;
                 case 'clear-all-filters':
@@ -741,54 +953,44 @@ document.addEventListener('DOMContentLoaded', () => {
     
     modalBody.addEventListener('change', (e) => {
         const target = e.target;
-        if (target.id === 'equipment-category') {
-            const categoryId = parseInt(target.value);
-            updateSubcategoryOptions(categoryId);
+        if (target.id === 'componente-grande-area') {
+            const grandeAreaId = parseInt(target.value);
+            updateSistemaOptions(grandeAreaId);
             updateInheritedInfo(null);
         }
-        if (target.id === 'equipment-subcategory') {
-            const subcategoryId = parseInt(target.value);
-            updateInheritedInfo(subcategoryId);
-        }
-        if (target.name === 'equipment-situation') {
-            const dateGroup = document.getElementById('date-input-group');
-            const dateLabel = document.getElementById('date-label');
-            dateGroup.classList.remove('hidden');
-            if (target.value === 'new') {
-                dateLabel.textContent = 'Data da Primeira Manutenção:';
-            } else {
-                dateLabel.textContent = 'Data da Última Manutenção:';
-            }
+        if (target.id === 'componente-sistema') {
+            const sistemaId = parseInt(target.value);
+            updateInheritedInfo(sistemaId);
         }
     });
 
     document.getElementById('maintenance-filters').addEventListener('change', (e) => {
         const target = e.target;
-        if (target.id === 'filter-categoria') {
-            const catId = parseInt(target.value);
-            const subcatSelect = document.getElementById('filter-subcategoria');
-            const equipSelect = document.getElementById('filter-equipamento');
-            equipSelect.innerHTML = '<option value="">Todos</option>';
-            equipSelect.disabled = true;
-            if (catId) {
-                const subcats = MOCK_DATA.subcategorias.filter(s => s.categoriaId === catId);
-                subcatSelect.innerHTML = '<option value="">Todas</option>' + subcats.map(s => `<option value="${s.id}">${s.nome}</option>`).join('');
-                subcatSelect.disabled = false;
+        if (target.id === 'filter-grande-area') {
+            const gaId = parseInt(target.value);
+            const sistemaSelect = document.getElementById('filter-sistema');
+            const componenteSelect = document.getElementById('filter-componente');
+            componenteSelect.innerHTML = '<option value="">Todos</option>';
+            componenteSelect.disabled = true;
+            if (gaId) {
+                const sistemas = MOCK_DATA.sistemas.filter(s => s.grandeAreaId === gaId);
+                sistemaSelect.innerHTML = '<option value="">Todos</option>' + sistemas.map(s => `<option value="${s.id}">${s.nome}</option>`).join('');
+                sistemaSelect.disabled = false;
             } else {
-                subcatSelect.innerHTML = '<option value="">Todas</option>';
-                subcatSelect.disabled = true;
+                sistemaSelect.innerHTML = '<option value="">Todos</option>';
+                sistemaSelect.disabled = true;
             }
         }
-        if (target.id === 'filter-subcategoria') {
-             const subcatId = parseInt(target.value);
-             const equipSelect = document.getElementById('filter-equipamento');
-             if (subcatId) {
-                const equips = MOCK_DATA.equipamentos.filter(e => e.subcategoriaId === subcatId);
-                equipSelect.innerHTML = '<option value="">Todos</option>' + equips.map(e => `<option value="${e.id}">${e.nome}</option>`).join('');
-                equipSelect.disabled = false;
+        if (target.id === 'filter-sistema') {
+             const sistemaId = parseInt(target.value);
+             const componenteSelect = document.getElementById('filter-componente');
+             if (sistemaId) {
+                const componentes = MOCK_DATA.componentes.filter(c => c.sistemaId === sistemaId);
+                componenteSelect.innerHTML = '<option value="">Todos</option>' + componentes.map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
+                componenteSelect.disabled = false;
              } else {
-                equipSelect.innerHTML = '<option value="">Todos</option>';
-                equipSelect.disabled = true;
+                componenteSelect.innerHTML = '<option value="">Todos</option>';
+                componenteSelect.disabled = true;
              }
         }
         applyFiltersAndRenderTable();
@@ -797,7 +999,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('maintenance-table').querySelector('thead').addEventListener('click', (e) => {
         const headerCell = e.target.closest('th.sortable');
         if (!headerCell) return;
-
         const newSortColumn = headerCell.dataset.sortKey;
         if (sortColumn === newSortColumn) {
             sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';

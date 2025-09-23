@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proposta de Solução para a Gestão da Manutenção Predial Preventiva</title>
+    <style>
+        :root {
+            --primary-color: #0056b3;
+            --secondary-color: #6c757d;
+            --bg-color: #f4f6f9;
+            --header-bg: #2c3e50;
+            --text-color: #333;
+            --card-bg: #ffffff;
+            --success-color: #2ecc71;
+            --warning-color: #f39c12;
+        }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.7;
+            font-size: 18px; /* Aumento da fonte base */
+        }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            background: linear-gradient(rgba(44, 62, 80, 0.8), rgba(44, 62, 80, 0.8));
+            color: white;
+            padding: 60px 20px;
+            text-align: center;
+        }
+        header h1 {
+            margin: 0;
+            font-size: 2.8em;
+            font-weight: 700;
+        }
+        header p {
+            font-size: 1.4em;
+            opacity: 0.9;
+            margin-top: 10px;
+            font-weight: 300;
+        }
+        nav {
+            position: sticky;
+            top: 0;
+            background-color: var(--card-bg);
+            border-bottom: 1px solid #ddd;
+            z-index: 1000;
+            padding: 0 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        nav ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+        }
+        nav li a {
+            display: block;
+            padding: 16px 22px;
+            text-decoration: none;
+            color: var(--primary-color);
+            font-weight: 600;
+            transition: background-color 0.2s, color 0.2s;
+            font-size: 1em;
+        }
+        nav li a:hover {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        section {
+            padding: 80px 0;
+            border-bottom: 1px solid #eee;
+        }
+        section:last-of-type { border-bottom: none; }
+        h2 {
+            text-align: center;
+            font-size: 2.4em;
+            margin-bottom: 60px;
+            color: var(--header-bg);
+            font-weight: 600;
+        }
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            padding: 30px;
+            margin-bottom: 20px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+        }
+        .icon-card h3 {
+            color: var(--primary-color);
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            font-size: 1.3em;
+        }
+        .icon-card h3 i {
+            margin-right: 15px;
+            font-size: 1.8em;
+            width: 40px;
+            text-align: center;
+        }
+        .tag {
+            display: inline-block;
+            background-color: #e7f3fe;
+            color: #0056b3;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            font-weight: bold;
+            margin-top: 15px;
+        }
+        blockquote {
+            margin: 40px 0;
+            padding: 25px;
+            background-color: #e9ecef;
+            border-left: 5px solid var(--secondary-color);
+            font-style: italic;
+            font-size: 1.1em;
+        }
+        .flow-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+            position: relative;
+        }
+        .flow-step {
+            flex: 1;
+            text-align: center;
+            position: relative;
+        }
+        .flow-icon {
+            width: 80px;
+            height: 80px;
+            background-color: var(--primary-color);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2em;
+            margin: 0 auto 20px;
+            border: 4px solid var(--bg-color);
+            box-shadow: 0 0 0 4px var(--primary-color);
+        }
+        .flow-step strong {
+            display: block;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            color: var(--header-bg);
+        }
+        .flow-arrow {
+            font-size: 2.5em;
+            color: var(--secondary-color);
+            opacity: 0.5;
+        }
+        
+        .advantages ul, .limitations ul {
+            list-style: none;
+            padding: 0;
+        }
+        .advantages li, .limitations li {
+            padding-left: 35px;
+            position: relative;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+        .advantages li::before, .limitations li::before {
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            position: absolute;
+            left: 0;
+            top: 5px;
+            font-size: 1.2em;
+        }
+        .advantages li::before { content: '\f058'; color: var(--success-color); }
+        .limitations li::before { content: '\f071'; color: var(--warning-color); }
+
+        #vantagens .card,
+        #limitacoes .card {
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        @media (max-width: 900px) {
+            .flow-container { flex-direction: column; }
+            .flow-arrow { transform: rotate(90deg); margin: 20px 0; }
+        }
+        @media (max-width: 768px) {
+            nav ul { flex-direction: column; text-align: center; }
+            body { font-size: 16px; }
+            header h1 { font-size: 2.2em; }
+        }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+</head>
+<body>
+
+    <header>
+        <div class="container">
+            <h1>Proposta de Solução para a Gestão da Manutenção Predial Preventiva</h1>
+            <p>Digitalização e Automatização de Agendamentos do PMOC</p>
+        </div>
+    </header>
+
+    <nav>
+        <ul>
+            <li><a href="#cenario">O Desafio</a></li>
+            <li><a href="#solucao">A Solução</a></li>
+            <li><a href="#funcionalidades">Funcionalidades</a></li>
+            <li><a href="#fluxo">Fluxo de Trabalho</a></li>
+            <li><a href="#vantagens">Vantagens</a></li>
+            <li><a href="#limitacoes">Limitações</a></li>
+            <li><a href="#proximos-passos">Próximos Passos</a></li>
+        </ul>
+    </nav>
+
+    <section id="cenario">
+        <div class="container">
+            <h2>O Desafio</h2>
+            <div class="grid">
+                <div class="card icon-card">
+                    <h3><i class="fas fa-sitemap"></i>Complexidade</h3>
+                    <p>Rastrear centenas de componentes e tarefas com múltiplas periodicidades (semanal, mensal, anual) de forma manual.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="far fa-clock"></i>Planejamento Intensivo</h3>
+                    <p>Elaboração manual de planos de trabalho que consome tempo valioso da fiscalização técnica.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="fas fa-exclamation-triangle"></i>Mitigação de Riscos</h3>
+                    <p>Processos manuais aumentam o risco de desvios e esquecimentos, impactando a conformidade com o PMOC.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="solucao">
+        <div class="container">
+            <h2>A Solução Proposta</h2>
+            <div class="grid">
+                <div class="card icon-card">
+                    <h3><i class="fas fa-file-code"></i>Digitalizar o PMOC</h3>
+                    <p>Converter as regras, checklists e periodicidades do plano em um sistema inteligente, que serve como uma extensão digital do plano oficial.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="fas fa-database"></i>Centralizar o Conhecimento</h3>
+                    <p>Criar uma base de dados única e segura para todos os planos, componentes e históricos de execução, consolidando a informação.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="fas fa-cogs"></i>Automatizar o Planejamento</h3>
+                    <p>Delegar ao sistema a tarefa de calcular, agendar e organizar as manutenções futuras, gerando planos de trabalho precisos e automáticos.</p>
+                </div>
+            </div>
+            <blockquote>
+                <strong>Foco Estratégico:</strong> Esta é uma ferramenta de <strong>planejamento e controle para a COSEN</strong>. Ela não interfere nem substitui sistemas oficiais de OS, mas sim os alimenta com um escopo de trabalho validado.
+            </blockquote>
+        </div>
+    </section>
+
+    <section id="funcionalidades">
+        <div class="container">
+            <h2>Funcionalidades do Protótipo</h2>
+            <div class="grid" style="grid-template-columns: 1fr 1fr;">
+                <div class="card icon-card">
+                    <h3><i class="fas fa-tachometer-alt"></i>Dashboard Visual</h3>
+                    <p>Painel inicial que agrupa e prioriza as tarefas vencidas, do mês atual e do próximo, com um calendário interativo.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="fas fa-sitemap"></i>Estrutura Fiel ao PMOC</h3>
+                    <p>Organização em Grandes Áreas, Sistemas e Componentes, refletindo a lógica do plano oficial.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="fas fa-tasks"></i>Agendamento por Tarefa</h3>
+                    <p>Cada tarefa possui sua própria periodicidade, garantindo conformidade com as especificações técnicas do PMOC.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="fas fa-puzzle-piece"></i>Flexibilidade de Cadastro</h3>
+                    <p>Permite adicionar tarefas específicas para um componente individual, além das tarefas herdadas do sistema padrão.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="fas fa-robot"></i>Geração Automática</h3>
+                    <p>O sistema calcula os próximos vencimentos com base no histórico, mantendo o cronograma sempre atualizado.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="fas fa-print"></i>Relatórios de Trabalho</h3>
+                    <p>Gera um plano de trabalho formatado para qualquer período, pronto para ser entregue às equipes terceirizadas.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="fluxo">
+        <div class="container">
+            <h2>Fluxo de Trabalho Proposto</h2>
+            <div class="card">
+                <div class="flow-container">
+                    <div class="flow-step">
+                        <div class="flow-icon"><i class="fas fa-pencil-alt"></i></div>
+                        <strong>1. Planejar</strong>
+                        <p>A COSEN alimenta o sistema com os planos do PMOC e o inventário de componentes.</p>
+                    </div>
+                    <div class="flow-arrow"><i class="fas fa-long-arrow-alt-right"></i></div>
+                    <div class="flow-step">
+                        <div class="flow-icon"><i class="fas fa-print"></i></div>
+                        <strong>2. Gerar</strong>
+                        <p>O gestor gera o relatório de tarefas pendentes para o período desejado.</p>
+                    </div>
+                    <div class="flow-arrow"><i class="fas fa-long-arrow-alt-right"></i></div>
+                    <div class="flow-step">
+                        <div class="flow-icon"><i class="fas fa-tools"></i></div>
+                        <strong>3. Executar</strong>
+                        <p>O relatório é entregue à contratada com o escopo dos serviços a serem executados.</p>
+                    </div>
+                    <div class="flow-arrow"><i class="fas fa-long-arrow-alt-right"></i></div>
+                    <div class="flow-step">
+                        <div class="flow-icon"><i class="fas fa-check-circle"></i></div>
+                        <strong>4. Registrar</strong>
+                        <p>O fiscal registra a conclusão, e o sistema agenda o próximo ciclo automaticamente.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="vantagens">
+        <div class="container">
+            <h2>Vantagens da Adoção</h2>
+            <div class="card advantages">
+                <ul>
+                    <li><strong>Mitigação de Riscos:</strong> Reduz significativamente o risco de esquecimento de tarefas críticas, garantindo maior conformidade com o PMOC.</li>
+                    <hr>
+                    <li><strong>Otimização do Tempo:</strong> Automatiza o processo de planejamento, liberando a equipe técnica para focar na fiscalização, análise e melhoria contínua.</li>
+                    <hr>
+                    <li><strong>Padronização:</strong> Garante que o escopo de trabalho comunicado às contratadas seja sempre completo, preciso e uniforme.</li>
+                    <hr>
+                    <li><strong>Histórico Confiável:</strong> Constrói uma base de dados estruturada para auditorias e tomadas de decisão futuras.</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <section id="limitacoes">
+    <div class="container">
+        <h2>Limitações Atuais e Oportunidades Futuras</h2>
+        <div class="card">
+            <div class="advantages-disadvantages">
+                <div class="limitations">
+                    <h2>Limitações</h2>
+                    <ul>
+                        <li>
+                            <strong>Arquitetura Standalone:</strong> O aplicativo foi projetado para operar sem depender da infraestrutura de servidores e bancos de dados do TSE. Os dados do protótipo, por enquanto, são salvos localmente no navegador.
+                        </li>
+                        <hr>
+                        <li>
+                            <strong>Aplicação Monousuário:</strong> Pelo mesmo motivo, o protótipo não é multiusuário e não possui sistema de autenticação, sendo destinado ao uso em uma estação de trabalho por vez.
+                        </li>
+                        <hr>
+                        <li>
+                            <strong>Fluxo Manual:</strong> A integração com sistemas externos (ex: IBM Máximo) não está prevista. Ela pode ser feita via registro manual pelo fiscal.
+                        </li>
+                        <hr>
+                        <li>
+                            <strong>Foco em Preventivas:</strong> O escopo atual cobre exclusivamente as manutenções preventivas.
+                        </li>
+                        <hr>
+                        <li>
+                            <strong>Aplicativo Desktop:</strong> O protótipo atual é uma versão apenas para desktop.
+                        </li>
+                        <br>
+                    </ul>
+                </div>
+                <div class="advantages">
+                    <h2 style="border-color: var(--primary-color);">Oportunidades</h2>
+                    <ul>
+                        <li style="--icon-color: var(--primary-color);">
+                            <strong>Gestão de Dados Local:</strong> Caso a continuidade do desenvolvimento seja aprovada, serão implementados botões para Salvar/Abrir os dados em um arquivo local (JSON).
+                        </li>
+                        <hr>
+                        <li style="--icon-color: var(--primary-color);">
+                            <strong>Não Dependência:</strong> A funcionalidade de gerar backups em planilha (XLSX) deve ser implementada. A ideia é não gerar dependência exclusiva do aplicativo para guardar o histórico de manutenções. O aplicativo deve ser uma ferramenta de auxílio, não uma prisão.
+                        </li>
+                        <hr>
+                        <li style="--icon-color: var(--primary-color);">
+                            <strong>Evolução para Dashboards:</strong> Criação de painéis com indicadores de desempenho (KPIs) de conformidade e execução.
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="proximos-passos">
+        <div class="container">
+            <h2>Próximos Passos</h2>
+            <div class="grid">
+                <div class="card icon-card">
+                    <h3><i class="fas fa-comments"></i>Validação Técnica</h3>
+                    <p>Realizar uma sessão interativa com a equipe para navegar na ferramenta e coletar feedback detalhado.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="fas fa-vial"></i>Projeto Piloto</h3>
+                    <p>Selecionar uma Grande Área para um piloto controlado, validando o fluxo com dados e situações reais.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="fas fa-server"></i>Requisitos Técnicos</h3>
+                    <p>Avaliar a infraestrutura, segurança e sustentação necessárias para a evolução do protótipo.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</body>
+</html>

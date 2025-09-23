@@ -12,16 +12,16 @@
         <nav id="main-menu">
             <div class="menu-header">
                 <h2>Gestor de Manutenção Predial</h2>
-                <span class="version-info">Versão beta 09</span>
+                <span class="version-info">Versão beta 14</span>
             </div>
             <ul>
                 <li><a href="#" class="nav-link active" data-target="screen-painel"><i class="fas fa-tachometer-alt"></i> Painel</a></li>
                 <li class="dropdown">
                     <a href="#" class="nav-link"><i class="fas fa-archive"></i> Cadastros</a>
                     <ul class="dropdown-content">
-                        <li><a href="#" class="nav-link" data-target="screen-lista-categorias"><i class="fas fa-tags"></i> Categorias</a></li>
-                        <li><a href="#" class="nav-link" data-target="screen-lista-subcategorias"><i class="fas fa-tag"></i> Subcategorias</a></li>
-                        <li><a href="#" class="nav-link" data-target="screen-lista-equipamentos"><i class="fas fa-cogs"></i> Equipamentos</a></li>
+                        <li><a href="#" class="nav-link" data-target="screen-lista-grandes-areas"><i class="fas fa-tags"></i> Grandes Áreas</a></li>
+                        <li><a href="#" class="nav-link" data-target="screen-lista-sistemas"><i class="fas fa-tag"></i> Sistemas</a></li>
+                        <li><a href="#" class="nav-link" data-target="screen-lista-componentes"><i class="fas fa-cogs"></i> Componentes</a></li>
                     </ul>
                 </li>
                 <li><a href="#" class="nav-link" data-target="screen-manutencoes"><i class="fas fa-calendar-check"></i> Manutenções</a></li>
@@ -30,15 +30,18 @@
         </nav>
 
         <main id="app-container">
-            <!-- TELA 1: Painel de Manutenção (Inicial) -->
+            <!-- TELA 1: Painel de Tarefas (Inicial) -->
             <div id="screen-painel" class="screen active">
                 <div class="screen-header" id="painel-header">
-                    <h1 class="screen-title" id="painel-main-title">Painel de Manutenção</h1>
-                    <button class="btn btn-secondary" id="clear-filter-btn" data-action="clear-filter" style="display: none;"><i class="fas fa-times"></i> Limpar Filtro</button>
+                    <h1 class="screen-title" id="painel-main-title">Painel de Tarefas</h1>
+                    <div>
+                        <button class="btn btn-primary" data-action="gerar-relatorio"><i class="fas fa-print"></i> Gerar Relatório</button>
+                        <button class="btn btn-secondary" id="clear-filter-btn" data-action="clear-filter" style="display: none; margin-left: 10px;"><i class="fas fa-times"></i> Limpar Filtro</button>
+                    </div>
                 </div>
                 <div class="painel-layout">
                     <div id="painel-alertas">
-                        <div class="card alerta-box" id="alertas-criticas"><h3><i class="fas fa-exclamation-triangle"></i> CRÍTICAS</h3><ul class="lista-os"></ul></div>
+                        <div class="card alerta-box" id="alertas-criticas"><h3><i class="fas fa-exclamation-triangle"></i> VENCIDAS</h3><ul class="lista-os"></ul></div>
                         <div class="card alerta-box" id="alertas-mes"><h3><i class="fas fa-calendar-day"></i> VENCENDO ESTE MÊS</h3><ul class="lista-os"></ul></div>
                         <div class="card alerta-box" id="alertas-proximo-mes"><h3><i class="fas fa-calendar-alt"></i> PRÓXIMO MÊS</h3><ul class="lista-os"></ul></div>
                     </div>
@@ -48,43 +51,55 @@
                 </div>
             </div>
 
-            <!-- TELA 2: Lista de Equipamentos -->
-            <div id="screen-lista-equipamentos" class="screen">
+            <!-- TELA 2: Lista de Componentes -->
+            <div id="screen-lista-componentes" class="screen">
                 <div class="screen-header">
-                    <h1 class="screen-title">Equipamentos Cadastrados</h1>
-                    <button class="btn btn-primary" data-action="novo-equipamento"><i class="fas fa-plus"></i> Novo Equipamento</button>
+                    <h1 class="screen-title">Componentes</h1>
+                    <button class="btn btn-primary" data-action="novo-componente"><i class="fas fa-plus"></i> Novo Componente</button>
+                </div>
+                <div class="info-note">
+                    <i class="fas fa-info-circle"></i>
+                    <p>Aqui você pode cadastrar os <strong>Componentes, Ativos, Máquinas ou Equipamentos</strong> que receberão a manutenção.</p>
                 </div>
                 <div class="card">
                     <table>
-                        <thead><tr><th>Nome</th><th>Categoria</th><th>Subcategoria</th><th>Local</th><th>Periodicidade</th><th>Ações</th></tr></thead>
+                        <thead><tr><th>Nome</th><th>Grande Área</th><th>Sistema</th><th>Criticidade</th><th>Ações</th></tr></thead>
                         <tbody><!-- Conteúdo gerado pelo JS --></tbody>
                     </table>
                 </div>
             </div>
             
-            <!-- TELA 3: Lista de Categorias -->
-            <div id="screen-lista-categorias" class="screen">
+            <!-- TELA 3: Lista de Grandes Áreas -->
+            <div id="screen-lista-grandes-areas" class="screen">
                 <div class="screen-header">
-                    <h1 class="screen-title">Categorias de Equipamentos</h1>
-                    <button class="btn btn-primary" data-action="nova-categoria"><i class="fas fa-plus"></i> Nova Categoria</button>
+                    <h1 class="screen-title">Grandes Áreas</h1>
+                    <button class="btn btn-primary" data-action="nova-grande-area"><i class="fas fa-plus"></i> Nova Grande Área</button>
+                </div>
+                <div class="info-note">
+                    <i class="fas fa-info-circle"></i>
+                    <p>As <strong>Grandes Áreas</strong> representam o nível mais alto de organização, equivalentes a uma <strong>Disciplina ou Especialidade</strong> (ex: Elétrica, Hidráulica, Climatização).</p>
                 </div>
                 <div class="card">
                     <table>
-                        <thead><tr><th>Nome da Categoria</th><th>Ações</th></tr></thead>
+                        <thead><tr><th>Nome da Grande Área</th><th>Ações</th></tr></thead>
                         <tbody><!-- Conteúdo gerado pelo JS --></tbody>
                     </table>
                 </div>
             </div>
 
-            <!-- TELA 4: Lista de Subcategorias -->
-            <div id="screen-lista-subcategorias" class="screen">
+            <!-- TELA 4: Lista de Sistemas -->
+            <div id="screen-lista-sistemas" class="screen">
                 <div class="screen-header">
-                    <h1 class="screen-title">Subcategorias de Equipamentos</h1>
-                    <button class="btn btn-primary" data-action="nova-subcategoria"><i class="fas fa-plus"></i> Nova Subcategoria</button>
+                    <h1 class="screen-title">Sistemas (Planos de Manutenção)</h1>
+                    <button class="btn btn-primary" data-action="novo-sistema"><i class="fas fa-plus"></i> Novo Sistema</button>
+                </div>
+                <div class="info-note">
+                    <i class="fas fa-info-circle"></i>
+                    <p>Em <strong>Sistemas</strong>, você cadastra <strong>planos de manutenção padrão</strong> para cada sistema de componentes (ex: Grupo Gerador, Quadro de Distribuição), definindo as tarefas e suas periodicidades.</p>
                 </div>
                 <div class="card">
                     <table>
-                        <thead><tr><th>Nome da Subcategoria</th><th>Categoria Pai</th><th>Periodicidade</th><th>Ações</th></tr></thead>
+                        <thead><tr><th>Nome do Sistema</th><th>Grande Área</th><th>Área Responsável</th><th>Ações</th></tr></thead>
                         <tbody><!-- Conteúdo gerado pelo JS --></tbody>
                     </table>
                 </div>
@@ -97,39 +112,43 @@
                 </div>
                 <div class="card">
                     <div class="filter-bar" id="maintenance-filters">
-                        <div class="filter-group">
-                            <label for="filter-categoria">Categoria</label>
-                            <select id="filter-categoria"><option value="">Todas</option></select>
+                        <div class="filter-row">
+                            <div class="filter-group">
+                                <label for="filter-grande-area">Grande Área</label>
+                                <select id="filter-grande-area"><option value="">Todas</option></select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="filter-sistema">Sistema</label>
+                                <select id="filter-sistema" disabled><option value="">Todos</option></select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="filter-componente">Componente</label>
+                                <select id="filter-componente" disabled><option value="">Todos</option></select>
+                            </div>
                         </div>
-                        <div class="filter-group">
-                            <label for="filter-subcategoria">Subcategoria</label>
-                            <select id="filter-subcategoria" disabled><option value="">Todas</option></select>
+                        <div class="filter-row">
+                            <div class="filter-group">
+                                <label for="filter-status">Status</label>
+                                <select id="filter-status">
+                                    <option value="">Todos</option>
+                                    <option value="A vencer">A vencer</option>
+                                    <option value="Atrasada">Atrasada</option>
+                                    <option value="Concluída">Concluída</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="filter-data-inicio">De</label>
+                                <input type="date" id="filter-data-inicio">
+                            </div>
+                            <div class="filter-group">
+                                <label for="filter-data-fim">Até</label>
+                                <input type="date" id="filter-data-fim">
+                            </div>
                         </div>
-                        <div class="filter-group">
-                            <label for="filter-equipamento">Equipamento</label>
-                            <select id="filter-equipamento" disabled><option value="">Todos</option></select>
-                        </div>
-                        <div class="filter-group">
-                            <label for="filter-status">Status</label>
-                            <select id="filter-status">
-                                <option value="">Todos</option>
-                                <option value="A vencer">A vencer</option>
-                                <option value="Atrasada">Atrasada</option>
-                                <option value="Concluída">Concluída</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label for="filter-data-inicio">De</label>
-                            <input type="date" id="filter-data-inicio">
-                        </div>
-                        <div class="filter-group">
-                            <label for="filter-data-fim">Até</label>
-                            <input type="date" id="filter-data-fim">
-                        </div>
-                        <div class="quick-filters">
+                        <div class="filter-row quick-filters">
                             <button class="btn btn-secondary" data-action="filter-week">Esta Semana</button>
                             <button class="btn btn-secondary" data-action="filter-month">Este Mês</button>
-                            <button class="btn btn-secondary" data-action="filter-quarter">Este Trimestre</button>
+                            <button class="btn btn-secondary" data-action="filter-next-month">Próximo Mês</button>
                             <button class="btn btn-secondary" data-action="clear-all-filters">Limpar Filtros</button>
                         </div>
                     </div>
@@ -138,9 +157,10 @@
                     <table id="maintenance-table">
                         <thead>
                             <tr>
-                                <th class="sortable" data-sort-key="equipmentName">Equipamento <span class="sort-icon"></span></th>
-                                <th class="sortable" data-sort-key="categoryName">Categoria <span class="sort-icon"></span></th>
-                                <th class="sortable" data-sort-key="date">Data <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort-key="componenteName">Componente <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort-key="tarefaDescricao">Tarefa <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort-key="criticidade">Criticidade <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort-key="date">Data Prevista <span class="sort-icon"></span></th>
                                 <th class="sortable" data-sort-key="status">Status <span class="sort-icon"></span></th>
                                 <th>Ações</th>
                             </tr>

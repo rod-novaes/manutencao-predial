@@ -19,6 +19,7 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     background-color: var(--bg-color);
     color: var(--text-color);
+    font-size: 1em;
 }
 
 #app-wrapper {
@@ -56,7 +57,7 @@ body {
     padding: 15px 20px;
     color: var(--nav-text-color);
     text-decoration: none;
-    transition: background-color 0.2s; /* LINHA CORRIGIDA */
+    transition: background-color 0.2s;
     position: relative;
 }
 
@@ -184,6 +185,11 @@ table th, table td {
 #painel-alertas { flex: 1; min-width: 0; }
 #painel-calendario { flex: 1.5; }
 
+#painel-header > div {
+    display: flex;
+    gap: 10px;
+}
+
 .alerta-box h3 {
     margin-top: 0;
     border-bottom: 1px solid var(--border-color);
@@ -195,19 +201,79 @@ table th, table td {
 .alerta-box .fa-calendar-alt { color: var(--primary-color); }
 
 .lista-os { list-style: none; padding: 0; }
-.lista-os li {
-    padding: 12px;
-    border-left: 5px solid var(--secondary-color);
-    margin-bottom: 10px;
-    cursor: pointer;
+
+/* --- ESTILOS DO AGRUPAMENTO DE TAREFAS (ACORDEÃO) --- */
+.task-group {
     background-color: #f8f9fa;
     border-radius: 4px;
-    transition: transform 0.2s;
+    margin-bottom: 10px;
+    border-left: 5px solid var(--secondary-color);
+    overflow: hidden;
 }
-.lista-os li:hover { transform: translateX(5px); }
-.lista-os li.status-critica { border-color: var(--status-atrasada); }
-.lista-os li.status-mes { border-color: var(--status-hoje); }
-.lista-os li.status-proximo-mes { border-color: var(--primary-color); }
+.task-group.status-critica { border-color: var(--status-atrasada); }
+.task-group.status-mes { border-color: var(--status-hoje); }
+.task-group.status-proximo-mes { border-color: var(--primary-color); }
+
+.task-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+.task-group-header:hover {
+    background-color: #e9ecef;
+}
+.task-group-header .component-name {
+    font-weight: bold;
+}
+.task-group-header .task-count {
+    background-color: var(--secondary-color);
+    color: white;
+    font-size: 12px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    margin-left: auto;
+    margin-right: 10px;
+}
+.task-group.status-critica .task-count { background-color: var(--status-atrasada); }
+.task-group.status-mes .task-count { background-color: var(--status-hoje); }
+.task-group.status-proximo-mes .task-count { background-color: var(--primary-color); }
+
+.task-group-header .expand-icon {
+    transition: transform 0.3s ease-in-out;
+}
+.task-group.open .expand-icon {
+    transform: rotate(180deg);
+}
+
+.task-sublist {
+    list-style: none;
+    padding: 0 12px 0 20px; /* Adiciona padding para alinhar com o texto do header */
+    margin: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-in-out, padding 0.3s ease-in-out;
+}
+.task-group.open .task-sublist {
+    max-height: 500px; /* Altura suficiente para várias tarefas */
+    padding-top: 5px;
+    padding-bottom: 12px;
+}
+.task-item {
+    padding: 8px 12px;
+    border-top: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+.task-item:hover {
+    background-color: #fff;
+}
+.task-item small {
+    display: block;
+    line-height: 1.4;
+}
 
 /* --- CALENDÁRIO --- */
 .calendar-header {
@@ -294,16 +360,20 @@ table th, table td {
 .status-badge.concluida { background-color: var(--status-concluida); }
 
 /* --- FORMULÁRIOS --- */
-.form-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+.form-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.form-group { margin-bottom: 15px; }
+.form-group small { font-size: 0.8em; color: var(--secondary-color); margin-top: 5px; display: block; }
 form label { display: block; margin-bottom: 5px; font-weight: bold; }
 form input[type="text"], form input[type="date"], form select, form textarea {
     width: 100%;
     padding: 10px;
-    margin-bottom: 15px;
     border: 1px solid var(--border-color);
     border-radius: 5px;
     box-sizing: border-box;
+    font-size: 1em;
+    font-family: inherit;
 }
+form textarea { resize: vertical; min-height: 80px; }
 .form-actions {
     margin-top: 20px;
     display: flex;
@@ -311,13 +381,21 @@ form input[type="text"], form input[type="date"], form select, form textarea {
     gap: 10px;
 }
 
-#form-os-details p { margin: 0 0 10px; }
-#form-os-details pre {
-    background-color: #f8f9fa;
-    padding: 10px;
+/* --- ESTILO PARA FIELDSET DE LOCALIZAÇÃO --- */
+.location-fieldset {
+    border: 1px solid var(--border-color);
     border-radius: 5px;
-    white-space: pre-wrap;
-    word-wrap: break-word;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+.location-fieldset legend {
+    font-weight: bold;
+    padding: 0 10px;
+    margin-left: 5px;
+    color: var(--secondary-color);
+}
+.location-fieldset .form-group {
+    margin-bottom: 0;
 }
 
 /* --- MODAL --- */
@@ -354,7 +432,7 @@ form input[type="text"], form input[type="date"], form select, form textarea {
     border-radius: 8px;
     box-shadow: 0 4px 10px rgba(0,0,0,0.2);
     width: 90%;
-    max-width: 600px;
+    max-width: 700px;
     z-index: 1001;
     display: flex;
     flex-direction: column;
@@ -393,50 +471,6 @@ form input[type="text"], form input[type="date"], form select, form textarea {
     overflow-y: auto;
 }
 
-/* Estilo para formulários dentro do modal */
-#modal-body form .form-group {
-    margin-bottom: 15px;
-}
-#modal-body form label {
-    display: block;
-    margin-bottom: 5px;
-    font-weight: bold;
-}
-#modal-body form input[type="text"],
-#modal-body form input[type="date"],
-#modal-body form select {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid var(--border-color);
-    border-radius: 5px;
-    box-sizing: border-box;
-}
-#modal-body .radio-group {
-    display: flex;
-    align-items: center;
-    margin-bottom: 8px;
-}
-#modal-body .radio-group input[type="radio"] {
-    width: auto;
-    margin: 0 10px 0 0;
-}
-#modal-body .radio-group label {
-    font-weight: normal;
-    margin-bottom: 0;
-}
-
-/* Estilos para o seletor de situação do equipamento */
-.radio-options-container {
-    background-color: #f8f9fa;
-    border: 1px solid var(--border-color);
-    border-radius: 5px;
-    padding: 15px;
-    margin-top: 5px;
-}
-.radio-options-container .radio-group:last-child {
-    margin-bottom: 0; /* Remove a margem extra do último item */
-}
-
 /* --- FORMULÁRIO DINÂMICO (CHECKLIST) --- */
 .checklist-container {
     background-color: #f8f9fa;
@@ -450,9 +484,14 @@ form input[type="text"], form input[type="date"], form select, form textarea {
     gap: 10px;
     margin-bottom: 10px;
 }
-.checklist-item input {
+.checklist-item:last-child {
+    margin-bottom: 0;
+}
+.checklist-item .checklist-item-input {
     flex-grow: 1;
-    margin-bottom: 0 !important;
+}
+.checklist-item .checklist-item-periodicity {
+    flex-basis: 150px;
 }
 .remove-item-btn {
     padding: 5px 10px;
@@ -463,12 +502,8 @@ form input[type="text"], form input[type="date"], form select, form textarea {
 .remove-item-btn i {
     margin-right: 0;
 }
-#add-checklist-item-btn {
-    width: 100%;
-    margin-top: 10px;
-}
 
-/* --- FORMULÁRIO DE EQUIPAMENTO (INFO HERDADA) --- */
+/* --- FORMULÁRIO DE COMPONENTE (INFO HERDADA) --- */
 .inherited-info-container {
     margin-top: 20px;
     padding: 15px;
@@ -498,16 +533,21 @@ form input[type="text"], form input[type="date"], form select, form textarea {
 /* --- TELA DE MANUTENÇÕES (FILTROS) --- */
 .filter-bar {
     display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
+    flex-direction: column;
+    gap: 15px;
     padding: 20px;
     background-color: var(--card-bg-color);
     border-radius: 8px;
     margin-bottom: 20px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
+.filter-row {
+    display: flex;
+    gap: 20px;
+    align-items: flex-end;
+}
 .filter-group {
-    flex: 1 1 180px; /* Flex-grow, flex-shrink, flex-basis */
+    flex: 1 1 0;
     display: flex;
     flex-direction: column;
     gap: 5px;
@@ -530,7 +570,6 @@ form input[type="text"], form input[type="date"], form select, form textarea {
     gap: 10px;
     padding-top: 10px;
     border-top: 1px solid var(--border-color);
-    margin-top: 10px;
 }
 .quick-filters .btn {
     padding: 5px 10px;
@@ -551,18 +590,18 @@ th.sortable .sort-icon {
     color: var(--secondary-color);
 }
 th.sortable:not(.sorted-asc):not(.sorted-desc):hover .sort-icon::after {
-    content: '\f0dc'; /* sort icon from FontAwesome */
+    content: '\f0dc';
     font-family: "Font Awesome 6 Free";
     font-weight: 900;
     opacity: 0.4;
 }
 th.sortable.sorted-asc .sort-icon::after {
-    content: '\f0de'; /* sort-up icon */
+    content: '\f0de';
     font-family: "Font Awesome 6 Free";
     font-weight: 900;
 }
 th.sortable.sorted-desc .sort-icon::after {
-    content: '\f0dd'; /* sort-down icon */
+    content: '\f0dd';
     font-family: "Font Awesome 6 Free";
     font-weight: 900;
 }
@@ -577,4 +616,73 @@ th.sortable.sorted-desc .sort-icon::after {
     background-color: #f8f9fa;
     border-bottom-left-radius: 8px;
     border-bottom-right-radius: 8px;
+}
+
+/* --- CAIXA DE NOTA INFORMATIVA --- */
+.info-note {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    background-color: #e7f3fe;
+    border-left: 4px solid var(--primary-color);
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 0 5px 5px 0;
+}
+
+.info-note i {
+    font-size: 1.5rem;
+    color: var(--primary-color);
+}
+
+.info-note p {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.5;
+    color: #333;
+}
+
+/* --- AJUSTE DE ESPAÇAMENTO FORMULÁRIO COMPONENTE --- */
+.inherited-info-container + .form-group {
+    margin-top: 25px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-color);
+}
+
+/* --- AJUSTES DE LARGURA DE COLUNA --- */
+
+#maintenance-table th:nth-child(1),
+#maintenance-table td:nth-child(1) {
+    /* Coluna Componente */
+    width: 155px; 
+}
+
+#maintenance-table th:nth-child(2),
+#maintenance-table td:nth-child(2) {
+    /* Coluna Tarefa */
+    width: 290px; 
+}
+
+#maintenance-table th:nth-child(3),
+#maintenance-table td:nth-child(3) {
+    /* Coluna Criticidade */
+    width: 100px;
+}
+
+#maintenance-table th:nth-child(4),
+#maintenance-table td:nth-child(4) {
+    /* Coluna Data Prevista */
+    width: 120px;
+}
+
+#maintenance-table th:nth-child(5),
+#maintenance-table td:nth-child(5) {
+    /* Coluna Status */
+    width: 130px;
+}
+
+#maintenance-table th:nth-child(6),
+#maintenance-table td:nth-child(6) {
+    /* Coluna Ações */
+    width: 130px; 
 }

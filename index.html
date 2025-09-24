@@ -12,7 +12,7 @@
         <nav id="main-menu">
             <div class="menu-header">
                 <h2>Gestor de Manutenção Predial</h2>
-                <span class="version-info">Versão beta 14</span>
+                <span class="version-info">Versão beta 15</span>
             </div>
             <ul>
                 <li><a href="#" class="nav-link active" data-target="screen-painel"><i class="fas fa-tachometer-alt"></i> Painel</a></li>
@@ -30,10 +30,10 @@
         </nav>
 
         <main id="app-container">
-            <!-- TELA 1: Painel de Tarefas (Inicial) -->
+            <!-- TELA 1: Painel de Serviços (Inicial) -->
             <div id="screen-painel" class="screen active">
                 <div class="screen-header" id="painel-header">
-                    <h1 class="screen-title" id="painel-main-title">Painel de Tarefas</h1>
+                    <h1 class="screen-title" id="painel-main-title">Painel de Serviços</h1>
                     <div>
                         <button class="btn btn-primary" data-action="gerar-relatorio"><i class="fas fa-print"></i> Gerar Relatório</button>
                         <button class="btn btn-secondary" id="clear-filter-btn" data-action="clear-filter" style="display: none; margin-left: 10px;"><i class="fas fa-times"></i> Limpar Filtro</button>
@@ -41,9 +41,27 @@
                 </div>
                 <div class="painel-layout">
                     <div id="painel-alertas">
-                        <div class="card alerta-box" id="alertas-criticas"><h3><i class="fas fa-exclamation-triangle"></i> VENCIDAS</h3><ul class="lista-os"></ul></div>
-                        <div class="card alerta-box" id="alertas-mes"><h3><i class="fas fa-calendar-day"></i> VENCENDO ESTE MÊS</h3><ul class="lista-os"></ul></div>
-                        <div class="card alerta-box" id="alertas-proximo-mes"><h3><i class="fas fa-calendar-alt"></i> PRÓXIMO MÊS</h3><ul class="lista-os"></ul></div>
+                        <div class="card alerta-box" id="alertas-criticas">
+                            <h3 data-action="toggle-alert-box">
+                                <span><i class="fas fa-exclamation-triangle"></i> VENCIDOS</span>
+                                <i class="fas fa-chevron-down expand-icon"></i>
+                            </h3>
+                            <ul class="lista-os"></ul>
+                        </div>
+                        <div class="card alerta-box" id="alertas-mes">
+                             <h3 data-action="toggle-alert-box">
+                                <span><i class="fas fa-calendar-day"></i> VENCENDO ESTE MÊS</span>
+                                <i class="fas fa-chevron-down expand-icon"></i>
+                            </h3>
+                            <ul class="lista-os"></ul>
+                        </div>
+                        <div class="card alerta-box" id="alertas-proximo-mes">
+                            <h3 data-action="toggle-alert-box">
+                                <span><i class="fas fa-calendar-alt"></i> PRÓXIMO MÊS</span>
+                                <i class="fas fa-chevron-down expand-icon"></i>
+                            </h3>
+                            <ul class="lista-os"></ul>
+                        </div>
                     </div>
                     <div id="painel-calendario" class="card">
                         <!-- O calendário será inserido aqui pelo JS -->
@@ -95,7 +113,7 @@
                 </div>
                 <div class="info-note">
                     <i class="fas fa-info-circle"></i>
-                    <p>Em <strong>Sistemas</strong>, você cadastra <strong>planos de manutenção padrão</strong> para cada sistema de componentes (ex: Grupo Gerador, Quadro de Distribuição), definindo as tarefas e suas periodicidades.</p>
+                    <p>Em <strong>Sistemas</strong>, você cadastra <strong>planos de manutenção padrão</strong> para cada sistema de componentes (ex: Grupo Gerador, Quadro de Distribuição), definindo os serviços e suas periodicidades.</p>
                 </div>
                 <div class="card">
                     <table>
@@ -158,7 +176,7 @@
                         <thead>
                             <tr>
                                 <th class="sortable" data-sort-key="componenteName">Componente <span class="sort-icon"></span></th>
-                                <th class="sortable" data-sort-key="tarefaDescricao">Tarefa <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort-key="tarefaDescricao">Serviço <span class="sort-icon"></span></th>
                                 <th class="sortable" data-sort-key="criticidade">Criticidade <span class="sort-icon"></span></th>
                                 <th class="sortable" data-sort-key="date">Data Prevista <span class="sort-icon"></span></th>
                                 <th class="sortable" data-sort-key="status">Status <span class="sort-icon"></span></th>

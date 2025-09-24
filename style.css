@@ -227,6 +227,9 @@ table th, table td {
 }
 .task-group-header .component-name {
     font-weight: bold;
+    flex-grow: 1; /* Permite que o nome cresça para ocupar o espaço disponível */
+    flex-shrink: 1; /* Permite que o nome encolha se necessário */
+    margin-right: 10px; /* Adiciona um espaço antes da etiqueta */
 }
 .task-group-header .task-count {
     background-color: var(--secondary-color);
@@ -234,8 +237,9 @@ table th, table td {
     font-size: 12px;
     padding: 3px 8px;
     border-radius: 12px;
-    margin-left: auto;
+    margin-left: auto; /* Mantém à direita */
     margin-right: 10px;
+    flex-shrink: 0; /* Impede que a etiqueta encolha */
 }
 .task-group.status-critica .task-count { background-color: var(--status-atrasada); }
 .task-group.status-mes .task-count { background-color: var(--status-hoje); }
@@ -685,4 +689,44 @@ th.sortable.sorted-desc .sort-icon::after {
 #maintenance-table td:nth-child(6) {
     /* Coluna Ações */
     width: 130px; 
+}
+
+/* --- ESTILOS DO PAINEL RETRÁTIL --- */
+.alerta-box h3 {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    margin-bottom: 0; /* Remove a margem inferior para um visual mais coeso */
+}
+
+.alerta-box h3:hover {
+    background-color: #f8f9fa;
+}
+
+.alerta-box h3 .expand-icon {
+    transition: transform 0.3s ease-in-out;
+    font-size: 0.8em;
+}
+
+.alerta-box.open h3 .expand-icon {
+    transform: rotate(180deg);
+}
+
+.alerta-box .lista-os {
+    margin: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease-in-out, padding 0.4s ease-in-out;
+    border-top: 1px solid transparent; /* Prepara para a borda no estado aberto */
+}
+
+.alerta-box.open .lista-os {
+    max-height: 1000px; /* Um valor alto para acomodar muitas tarefas */
+    padding-top: 15px;
+    padding-bottom: 5px;
+    border-top: 1px solid var(--border-color);
 }

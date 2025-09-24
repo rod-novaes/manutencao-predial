@@ -22,7 +22,7 @@
             background-color: var(--bg-color);
             color: var(--text-color);
             line-height: 1.7;
-            font-size: 18px; /* Aumento da fonte base */
+            font-size: 18px;
         }
         .container {
             max-width: 1100px;
@@ -117,16 +117,6 @@
             width: 40px;
             text-align: center;
         }
-        .tag {
-            display: inline-block;
-            background-color: #e7f3fe;
-            color: #0056b3;
-            padding: 5px 12px;
-            border-radius: 15px;
-            font-size: 0.8em;
-            font-weight: bold;
-            margin-top: 15px;
-        }
         blockquote {
             margin: 40px 0;
             padding: 25px;
@@ -193,12 +183,68 @@
         }
         .advantages li::before { content: '\f058'; color: var(--success-color); }
         .limitations li::before { content: '\f071'; color: var(--warning-color); }
-
-        #vantagens .card,
-        #limitacoes .card {
-            max-width: 700px;
+        #vantagens .card, #limitacoes .card {
+            max-width: 800px;
             margin-left: auto;
             margin-right: auto;
+        }
+        
+        /* --- ESTILOS PARA TABELA COMPARATIVA --- */
+        .comparison-table-container {
+            padding: 0;
+            overflow-x: auto;
+            margin-top: 40px;
+        }
+        .comparison-table-container table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #ddd;
+        }
+        .comparison-table-container th, 
+        .comparison-table-container td {
+            padding: 16px 20px;
+            text-align: left;
+            vertical-align: top;
+            border-bottom: 1px solid #ddd;
+        }
+        .comparison-table-container thead th {
+            background-color: var(--header-bg);
+            color: white;
+            font-size: 1.2em;
+        }
+        .comparison-table-container tbody td:first-child {
+            font-weight: 600;
+            width: 18%;
+            color: var(--primary-color);
+        }
+        .comparison-table-container tbody tr:last-child td {
+            border-bottom: none;
+        }
+        .comparison-table-container .highlight-col {
+            background-color: #e7f3fe;
+        }
+        .comparison-table-container .highlight-col strong {
+            color: var(--primary-color);
+        }
+        .comparison-table-container td ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .comparison-table-container td li {
+            padding-left: 25px;
+            position: relative;
+            margin-bottom: 10px;
+        }
+        .comparison-table-container td li:last-child { margin-bottom: 0; }
+        .comparison-table-container td li::before {
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            position: absolute;
+            left: 0;
+            top: 4px;
+            color: var(--primary-color);
+            content: '\f058'; /* fas fa-check-circle */
         }
 
         @media (max-width: 900px) {
@@ -218,7 +264,7 @@
     <header>
         <div class="container">
             <h1>Proposta de Solução para a Gestão da Manutenção Predial Preventiva</h1>
-            <p>Digitalização e Automatização de Agendamentos do PMOC</p>
+            <p>Digitalização e Automatização do(s) PMOC</p>
         </div>
     </header>
 
@@ -230,6 +276,7 @@
             <li><a href="#fluxo">Fluxo de Trabalho</a></li>
             <li><a href="#vantagens">Vantagens</a></li>
             <li><a href="#limitacoes">Limitações</a></li>
+            <li><a href="#estrategia">Ferramenta Estratégica</a></li>
             <li><a href="#proximos-passos">Próximos Passos</a></li>
         </ul>
     </nav>
@@ -240,15 +287,15 @@
             <div class="grid">
                 <div class="card icon-card">
                     <h3><i class="fas fa-sitemap"></i>Complexidade</h3>
-                    <p>Rastrear centenas de componentes e tarefas com múltiplas periodicidades (semanal, mensal, anual) de forma manual.</p>
+                    <p>Rastrear centenas de serviços com múltiplas periodicidades (semanal, mensal, anual) de forma manual.</p>
                 </div>
                 <div class="card icon-card">
-                    <h3><i class="far fa-clock"></i>Planejamento Intensivo</h3>
-                    <p>Elaboração manual de planos de trabalho que consome tempo valioso da fiscalização técnica.</p>
+                    <h3><i class="far fa-clock"></i>Planejamento</h3>
+                    <p>Elaborar manualmente planos de trabalho, consumindo tempo valioso da fiscalização técnica.</p>
                 </div>
                 <div class="card icon-card">
                     <h3><i class="fas fa-exclamation-triangle"></i>Mitigação de Riscos</h3>
-                    <p>Processos manuais aumentam o risco de desvios e esquecimentos, impactando a conformidade com o PMOC.</p>
+                    <p>Trabalhar com processos manuais aumenta o risco de desvios e esquecimentos, que pode impactar na conformidade com o PMOC.</p>
                 </div>
             </div>
         </div>
@@ -263,47 +310,47 @@
                     <p>Converter as regras, checklists e periodicidades do plano em um sistema inteligente, que serve como uma extensão digital do plano oficial.</p>
                 </div>
                 <div class="card icon-card">
-                    <h3><i class="fas fa-database"></i>Centralizar o Conhecimento</h3>
-                    <p>Criar uma base de dados única e segura para todos os planos, componentes e históricos de execução, consolidando a informação.</p>
+                    <h3><i class="fas fa-database"></i>Centralizar a Base</h3>
+                    <p>Criar uma base de dados única para todas as grandes áreas, sistemas, componentes e históricos de serviços, consolidando a informação.</p>
                 </div>
                 <div class="card icon-card">
-                    <h3><i class="fas fa-cogs"></i>Automatizar o Planejamento</h3>
-                    <p>Delegar ao sistema a tarefa de calcular, agendar e organizar as manutenções futuras, gerando planos de trabalho precisos e automáticos.</p>
+                    <h3><i class="fas fa-cogs"></i>Automatizar o Plano</h3>
+                    <p>Delegar ao sistema a tarefa de calcular, agendar e organizar as manutenções futuras, gerando relaórios de trabalho precisos e automáticos.</p>
                 </div>
             </div>
             <blockquote>
-                <strong>Foco Estratégico:</strong> Esta é uma ferramenta de <strong>planejamento e controle para a COSEN</strong>. Ela não interfere nem substitui sistemas oficiais de OS, mas sim os alimenta com um escopo de trabalho validado.
+                <strong>Foco Estratégico:</strong> Esta é uma ferramenta de <strong>planejamento e controle para a COSEN</strong>. Ela não interfere nem substitui sistemas oficiais de OS (IBM Máximo), mas pode os alimentar dentro do interesse da coordenadoria.
             </blockquote>
         </div>
     </section>
 
     <section id="funcionalidades">
         <div class="container">
-            <h2>Funcionalidades do Protótipo</h2>
+            <h2>Funcionalidades</h2>
             <div class="grid" style="grid-template-columns: 1fr 1fr;">
                 <div class="card icon-card">
                     <h3><i class="fas fa-tachometer-alt"></i>Dashboard Visual</h3>
-                    <p>Painel inicial que agrupa e prioriza as tarefas vencidas, do mês atual e do próximo, com um calendário interativo.</p>
+                    <p>Painel inicial que agrupa e prioriza os serviços vencidos, do mês atual e do próximo, com um calendário interativo.</p>
                 </div>
                 <div class="card icon-card">
                     <h3><i class="fas fa-sitemap"></i>Estrutura Fiel ao PMOC</h3>
                     <p>Organização em Grandes Áreas, Sistemas e Componentes, refletindo a lógica do plano oficial.</p>
                 </div>
                 <div class="card icon-card">
-                    <h3><i class="fas fa-tasks"></i>Agendamento por Tarefa</h3>
-                    <p>Cada tarefa possui sua própria periodicidade, garantindo conformidade com as especificações técnicas do PMOC.</p>
+                    <h3><i class="fas fa-tasks"></i>Agendamento por Serviço</h3>
+                    <p>Cada serviço possui sua própria periodicidade, garantindo conformidade com as especificações técnicas do PMOC.</p>
                 </div>
                 <div class="card icon-card">
                     <h3><i class="fas fa-puzzle-piece"></i>Flexibilidade de Cadastro</h3>
-                    <p>Permite adicionar tarefas específicas para um componente individual, além das tarefas herdadas do sistema padrão.</p>
+                    <p>Permite adicionar serviços específicos para um componente individual, além dos serviços herdados do sistema padrão.</p>
                 </div>
                 <div class="card icon-card">
                     <h3><i class="fas fa-robot"></i>Geração Automática</h3>
-                    <p>O sistema calcula os próximos vencimentos com base no histórico, mantendo o cronograma sempre atualizado.</p>
+                    <p>O sistema calcula os próximos vencimentos com base no histórico, mantendo o cronograma automaticamente atualizado.</p>
                 </div>
                 <div class="card icon-card">
                     <h3><i class="fas fa-print"></i>Relatórios de Trabalho</h3>
-                    <p>Gera um plano de trabalho formatado para qualquer período, pronto para ser entregue às equipes terceirizadas.</p>
+                    <p>É possível gerar um plano de trabalho formatado para qualquer período, pronto para ser entregue às equipes terceirizadas ou para servir de base de comparação com o Relatório Técnico de Manutenção recebido.</p>
                 </div>
             </div>
         </div>
@@ -317,19 +364,19 @@
                     <div class="flow-step">
                         <div class="flow-icon"><i class="fas fa-pencil-alt"></i></div>
                         <strong>1. Planejar</strong>
-                        <p>A COSEN alimenta o sistema com os planos do PMOC e o inventário de componentes.</p>
+                        <p>A COSEN alimenta o sistema com os dados do PMOC e o inventário de serviços.</p>
                     </div>
                     <div class="flow-arrow"><i class="fas fa-long-arrow-alt-right"></i></div>
                     <div class="flow-step">
                         <div class="flow-icon"><i class="fas fa-print"></i></div>
                         <strong>2. Gerar</strong>
-                        <p>O gestor gera o relatório de tarefas pendentes para o período desejado.</p>
+                        <p>O gestor gera o relatório de serviços pendentes para o período desejado.</p>
                     </div>
                     <div class="flow-arrow"><i class="fas fa-long-arrow-alt-right"></i></div>
                     <div class="flow-step">
                         <div class="flow-icon"><i class="fas fa-tools"></i></div>
                         <strong>3. Executar</strong>
-                        <p>O relatório é entregue à contratada com o escopo dos serviços a serem executados.</p>
+                        <p>O relatório é entregue à contratada como escopo do serviço.</p>
                     </div>
                     <div class="flow-arrow"><i class="fas fa-long-arrow-alt-right"></i></div>
                     <div class="flow-step">
@@ -347,12 +394,9 @@
             <h2>Vantagens da Adoção</h2>
             <div class="card advantages">
                 <ul>
-                    <li><strong>Mitigação de Riscos:</strong> Reduz significativamente o risco de esquecimento de tarefas críticas, garantindo maior conformidade com o PMOC.</li>
-                    <hr>
+                    <li><strong>Mitigação de Riscos:</strong> Reduz significativamente o risco de esquecimento de serviços críticos, garantindo maior conformidade com o PMOC.</li>
                     <li><strong>Otimização do Tempo:</strong> Automatiza o processo de planejamento, liberando a equipe técnica para focar na fiscalização, análise e melhoria contínua.</li>
-                    <hr>
-                    <li><strong>Padronização:</strong> Garante que o escopo de trabalho comunicado às contratadas seja sempre completo, preciso e uniforme.</li>
-                    <hr>
+                    <li><strong>Padronização:</strong> Garante que o escopo de trabalho comunicado às contratadas seja completo, preciso e uniforme.</li>
                     <li><strong>Histórico Confiável:</strong> Constrói uma base de dados estruturada para auditorias e tomadas de decisão futuras.</li>
                 </ul>
             </div>
@@ -360,51 +404,64 @@
     </section>
 
     <section id="limitacoes">
-    <div class="container">
-        <h2>Limitações Atuais e Oportunidades Futuras</h2>
-        <div class="card">
-            <div class="advantages-disadvantages">
-                <div class="limitations">
-                    <h2>Limitações</h2>
-                    <ul>
-                        <li>
-                            <strong>Arquitetura Standalone:</strong> O aplicativo foi projetado para operar sem depender da infraestrutura de servidores e bancos de dados do TSE. Os dados do protótipo, por enquanto, são salvos localmente no navegador.
-                        </li>
-                        <hr>
-                        <li>
-                            <strong>Aplicação Monousuário:</strong> Pelo mesmo motivo, o protótipo não é multiusuário e não possui sistema de autenticação, sendo destinado ao uso em uma estação de trabalho por vez.
-                        </li>
-                        <hr>
-                        <li>
-                            <strong>Fluxo Manual:</strong> A integração com sistemas externos (ex: IBM Máximo) não está prevista. Ela pode ser feita via registro manual pelo fiscal.
-                        </li>
-                        <hr>
-                        <li>
-                            <strong>Foco em Preventivas:</strong> O escopo atual cobre exclusivamente as manutenções preventivas.
-                        </li>
-                        <hr>
-                        <li>
-                            <strong>Aplicativo Desktop:</strong> O protótipo atual é uma versão apenas para desktop.
-                        </li>
-                        <br>
-                    </ul>
-                </div>
-                <div class="advantages">
-                    <h2 style="border-color: var(--primary-color);">Oportunidades</h2>
-                    <ul>
-                        <li style="--icon-color: var(--primary-color);">
-                            <strong>Gestão de Dados Local:</strong> Caso a continuidade do desenvolvimento seja aprovada, serão implementados botões para Salvar/Abrir os dados em um arquivo local (JSON).
-                        </li>
-                        <hr>
-                        <li style="--icon-color: var(--primary-color);">
-                            <strong>Não Dependência:</strong> A funcionalidade de gerar backups em planilha (XLSX) deve ser implementada. A ideia é não gerar dependência exclusiva do aplicativo para guardar o histórico de manutenções. O aplicativo deve ser uma ferramenta de auxílio, não uma prisão.
-                        </li>
-                        <hr>
-                        <li style="--icon-color: var(--primary-color);">
-                            <strong>Evolução para Dashboards:</strong> Criação de painéis com indicadores de desempenho (KPIs) de conformidade e execução.
-                        </li>
-                    </ul>
-                </div>
+        <div class="container">
+            <h2>Limitações e Oportunidades Futuras</h2>
+            <div class="card limitations">
+                 <ul>
+                    <li><strong>Arquitetura Standalone:</strong> O aplicativo foi projetado para operar sem depender da infraestrutura de servidores do TSE. Os dados do protótipo são salvos no navegador.</li>
+                    <li><strong>Aplicação Monousuário:</strong> O protótipo não é multiusuário e não possui sistema de autenticação, sendo destinado ao uso em uma estação de trabalho por vez.</li>
+                    <li><strong>Fluxo Manual:</strong> A integração com sistemas externos (ex: IBM Máximo) pode ser feita via registro manual pelo fiscal, se isso for do interesse da Cosen.</li>
+                    <li><strong>Oportunidade de Evolução:</strong> Caso o desenvolvimento seja aprovado, podem ser implementados recursos como gestão de dados local (Salvar/Abrir/Backup) e dashboards de KPIs.</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <section id="estrategia">
+        <div class="container">
+            <h2>Ferramenta Estratégica<br><em style="font-size: 0.7em; font-weight: normal">Comparativo com Relatório Técnico de Manutenção</em></h2>
+            <div class="card comparison-table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Aspecto</th>
+                            <th>Relatório Técnico<br>(Contratada)</th>
+                            <th>Aplicativo Gestor<br>(COSEN)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Propósito</strong></td>
+                            <td>Prestar contas do que foi feito.</td>
+                            <td class="highlight-col"><ul><li><strong>Planejar</strong> o que deve ser feito.</li></ul></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Visão</strong></td>
+                            <td>Retrospectiva, focada no passado.</td>
+                            <td class="highlight-col"><ul><li><strong>Prospectiva e contínua</strong>, prevendo as futuras manutenções.</li></ul></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Escopo</strong></td>
+                            <td>Isolado por contrato de grande área (ex: Climatização).</td>
+                            <td class="highlight-col"><ul><li><strong>Centralizado</strong>, consolidando todos os planos (Elétrica, Hidráulica, etc.).</li></ul></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Controle</strong></td>
+                            <td>Plano proposto pela Contratada.</td>
+                            <td class="highlight-col"><ul><li>Plano gerado pela <strong>COSEN</strong>.</li></ul></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Natureza</strong></td>
+                            <td>Documento estático (PDF).</td>
+                            <td class="highlight-col"><ul><li>Base de dados <strong>dinâmica e inteligente</strong>.</li></ul></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Histórico</strong></td>
+                            <td>Relatórios mensais.</td>
+                            <td class="highlight-col"><ul><li>Histórico contínuo de dados com filtro por períodos.</li></ul></td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </section>
@@ -415,7 +472,7 @@
             <div class="grid">
                 <div class="card icon-card">
                     <h3><i class="fas fa-comments"></i>Validação Técnica</h3>
-                    <p>Realizar uma sessão interativa com a equipe para navegar na ferramenta e coletar feedback detalhado.</p>
+                    <p>Verificar utilidade e viabilidade com a equipe da Cosen.</p>
                 </div>
                 <div class="card icon-card">
                     <h3><i class="fas fa-vial"></i>Projeto Piloto</h3>
@@ -423,7 +480,7 @@
                 </div>
                 <div class="card icon-card">
                     <h3><i class="fas fa-server"></i>Requisitos Técnicos</h3>
-                    <p>Avaliar a infraestrutura, segurança e sustentação necessárias para a evolução do protótipo.</p>
+                    <p>Avaliar a infraestrutura e a logística necessárias para a evolução do protótipo.</p>
                 </div>
             </div>
         </div>

@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     periodicidade: tarefa.periodicidade,
                     grandeAreaId: componente.grandeAreaId,
                     sistemaId: componente.sistemaId,
-                    criticidade: componente.criticidade, // Adicionado
+                    criticidade: componente.criticidade,
                     date: dueDate,
                     status: status,
                     type: 'upcoming'
@@ -112,11 +112,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 componenteId: componente.id,
                 componenteName: componente.nome,
                 tarefaId: hist.tarefaId,
-                tarefaDescricao: tarefa ? tarefa.tarefa : 'Tarefa não encontrada',
+                tarefaDescricao: tarefa ? tarefa.tarefa : 'Serviço não encontrado',
                 periodicidade: tarefa ? tarefa.periodicidade : 'N/A',
                 grandeAreaId: componente.grandeAreaId,
                 sistemaId: componente.sistemaId,
-                criticidade: componente.criticidade, // Adicionado
+                criticidade: componente.criticidade,
                 date: new Date(hist.data + 'T12:00:00'),
                 status: 'Concluída',
                 type: 'completed',
@@ -182,7 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const selectedPeriodicidade = item.periodicidade || 'Mensal';
             const optionsWithSelected = ['Semanal', 'Mensal', 'Trimestral', 'Semestral', 'Anual'].map(p => `<option value="${p}" ${p === selectedPeriodicidade ? 'selected' : ''}>${p}</option>`).join('');
             return `<div class="checklist-item">
-                        <input type="text" class="checklist-item-input" value="${item.tarefa || ''}" placeholder="Descreva a tarefa">
+                        <input type="text" class="checklist-item-input" value="${item.tarefa || ''}" placeholder="Descreva o serviço">
                         <select class="checklist-item-periodicity">${optionsWithSelected}</select>
                         <button class="btn btn-danger remove-item-btn" data-action="remove-checklist-item" title="Remover item"><i class="fas fa-trash-alt"></i></button>
                     </div>`;
@@ -191,7 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="form-group"><label for="sistema-grande-area">Grande Área:</label><select id="sistema-grande-area" required><option value="">Selecione...</option>${grandeAreaOptions}</select></div>
                     <div class="form-group"><label for="sistema-name">Nome do Sistema:</label><input type="text" id="sistema-name" value="${nome}" required></div>
                     <div class="form-group"><label for="sistema-area-responsavel">Área Responsável:</label><input type="text" id="sistema-area-responsavel" value="${areaResponsavel}"></div>
-                    <div class="form-group"><label>Tarefas do Plano de Manutenção:</label><div class="checklist-container">${checklistItems}</div><button type="button" class="btn btn-secondary" data-action="add-checklist-item"><i class="fas fa-plus"></i> Adicionar Tarefa</button></div>
+                    <div class="form-group"><label>Serviços do Plano de Manutenção:</label><div class="checklist-container">${checklistItems}</div><button type="button" class="btn btn-secondary" data-action="add-checklist-item"><i class="fas fa-plus"></i> Adicionar Serviço</button></div>
                 </form>`;
     }
     function handleAddSistema() {
@@ -256,7 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const newItem = document.createElement('div');
         newItem.className = 'checklist-item';
         const periodicidadeOptions = ['Semanal', 'Mensal', 'Trimestral', 'Semestral', 'Anual'].map(p => `<option value="${p}" ${p === 'Mensal' ? 'selected' : ''}>${p}</option>`).join('');
-        newItem.innerHTML = `<input type="text" class="checklist-item-input" placeholder="Descreva a tarefa">
+        newItem.innerHTML = `<input type="text" class="checklist-item-input" placeholder="Descreva o serviço">
                              <select class="checklist-item-periodicity">${periodicidadeOptions}</select>
                              <button class="btn btn-danger remove-item-btn" data-action="remove-checklist-item" title="Remover item"><i class="fas fa-trash-alt"></i></button>`;
         container.appendChild(newItem);
@@ -271,7 +271,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const selectedPeriodicidade = item.periodicidade || 'Mensal';
             const optionsWithSelected = ['Semanal', 'Mensal', 'Trimestral', 'Semestral', 'Anual'].map(p => `<option value="${p}" ${p === selectedPeriodicidade ? 'selected' : ''}>${p}</option>`).join('');
             return `<div class="checklist-item">
-                        <input type="text" class="checklist-item-input" value="${item.tarefa || ''}" placeholder="Descreva a tarefa específica">
+                        <input type="text" class="checklist-item-input" value="${item.tarefa || ''}" placeholder="Descreva o serviço específico">
                         <select class="checklist-item-periodicity">${optionsWithSelected}</select>
                         <button class="btn btn-danger remove-item-btn" data-action="remove-checklist-item" title="Remover item"><i class="fas fa-trash-alt"></i></button>
                     </div>`;
@@ -322,9 +322,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div id="inherited-info-container" class="inherited-info-container" style="display: none;"></div>
                 <div class="form-group">
-                    <label>Tarefas Específicas (Opcional):</label>
+                    <label>Serviços Específicos (Opcional):</label>
                     <div class="checklist-container" id="specific-tasks-container">${tarefasItems}</div>
-                    <button type="button" class="btn btn-secondary" data-action="add-checklist-item"><i class="fas fa-plus"></i> Adicionar Tarefa Específica</button>
+                    <button type="button" class="btn btn-secondary" data-action="add-checklist-item"><i class="fas fa-plus"></i> Adicionar Serviço Específico</button>
                 </div>
             </form>
         `;
@@ -344,8 +344,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const infoContainer = document.getElementById('inherited-info-container');
         const sistema = MOCK_DATA.sistemas.find(s => s.id === sistemaId);
         if (sistema) {
-            const checklistHtml = sistema.checklist.length > 0 ? `<ul>${sistema.checklist.map(item => `<li>${item.tarefa} (<strong>${item.periodicidade}</strong>)</li>`).join('')}</ul>` : '<p>Nenhuma tarefa padrão cadastrada.</p>';
-            infoContainer.innerHTML = `<h5>Informações Herdadas do Sistema "${sistema.nome}"</h5><p><strong>Área Responsável:</strong> ${sistema.areaResponsavel}</p><p><strong>Tarefas Padrão:</strong></p>${checklistHtml}`;
+            const checklistHtml = sistema.checklist.length > 0 ? `<ul>${sistema.checklist.map(item => `<li>${item.tarefa} (<strong>${item.periodicidade}</strong>)</li>`).join('')}</ul>` : '<p>Nenhum serviço padrão cadastrado.</p>';
+            infoContainer.innerHTML = `<h5>Informações Herdadas do Sistema "${sistema.nome}"</h5><p><strong>Área Responsável:</strong> ${sistema.areaResponsavel}</p><p><strong>Serviços Padrão:</strong></p>${checklistHtml}`;
             infoContainer.style.display = 'block';
         } else {
             infoContainer.style.display = 'none';
@@ -443,7 +443,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
         if (activeDateFilter) {
             const dataFormatada = new Date(activeDateFilter + 'T12:00:00').toLocaleDateString('pt-BR');
-            painelTitle.textContent = `Tarefas para ${dataFormatada}`;
+            painelTitle.textContent = `Serviços para ${dataFormatada}`;
             clearFilterBtn.style.display = 'block';
     
             const tasksOnDay = allTasks.filter(t => t.date.toISOString().slice(0, 10) === activeDateFilter);
@@ -460,7 +460,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
     
-        painelTitle.textContent = 'Painel de Tarefas';
+        painelTitle.textContent = 'Painel de Serviços';
         clearFilterBtn.style.display = 'none';
     
         const criticas = allTasks.filter(t => t.status === 'Atrasada');
@@ -471,12 +471,15 @@ document.addEventListener('DOMContentLoaded', () => {
         renderTaskListToPanel(document.querySelector('#alertas-mes .lista-os'), mes, 'status-mes');
         renderTaskListToPanel(document.querySelector('#alertas-proximo-mes .lista-os'), proximoMes, 'status-proximo-mes');
         renderCalendar();
+
+        // Garante que a seção "Vencendo Este Mês" comece aberta por padrão
+        document.getElementById('alertas-mes').classList.add('open');
     }
 
     function renderTaskListToPanel(ulElement, taskList, cssClass) {
         ulElement.innerHTML = '';
         if (taskList.length === 0) {
-            ulElement.innerHTML = '<li>Nenhuma tarefa encontrada.</li>';
+            ulElement.innerHTML = '<li>Nenhum serviço encontrado.</li>';
             return;
         }
         const groupedByComponent = taskList.reduce((acc, task) => {
@@ -494,7 +497,7 @@ document.addEventListener('DOMContentLoaded', () => {
             header.className = 'task-group-header';
             header.dataset.action = 'toggle-task-group';
             header.innerHTML = `<span class="component-name">${group.name}</span>
-                                <span class="task-count">${group.tasks.length} tarefa(s)</span>
+                                <span class="task-count">${group.tasks.length} serviço(s)</span>
                                 <i class="fas fa-chevron-down expand-icon"></i>`;
             const sublist = document.createElement('ul');
             sublist.className = 'task-sublist';
@@ -681,7 +684,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const bodyHtml = `
             <form id="complete-task-form">
                 <p><strong>Componente:</strong> ${componente.nome}</p>
-                <p><strong>Tarefa:</strong> ${tarefa.tarefa}</p>
+                <p><strong>Serviço:</strong> ${tarefa.tarefa}</p>
                 <div class="form-group">
                     <label for="completion-date">Data de Realização:</label>
                     <input type="date" id="completion-date" value="${todayStr}" required>
@@ -697,7 +700,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </form>
         `;
         const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-completion">Salvar Conclusão</button>`;
-        showModal('Concluir Tarefa de Manutenção', bodyHtml, footerHtml);
+        showModal('Concluir Serviço de Manutenção', bodyHtml, footerHtml);
     }
 
     function saveCompletion() {
@@ -713,7 +716,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tarefaId: tarefaId,
             data: completionDate,
             os: completionOs,
-            obs: completionObs || 'Tarefa concluída.'
+            obs: completionObs || 'Serviço concluído.'
         });
         closeModal();
         if (renderers[activeScreen]) renderers[activeScreen]();
@@ -723,9 +726,9 @@ document.addEventListener('DOMContentLoaded', () => {
         editingItemId = historyId;
         const historyEntry = MOCK_DATA.historicoManutencoes.find(h => h.id === historyId);
         if (!historyEntry) return;
-        const bodyHtml = `<p>Você tem certeza que deseja reverter esta conclusão? O registro será removido e a tarefa voltará a ser agendada com base na execução anterior.</p>`;
+        const bodyHtml = `<p>Você tem certeza que deseja reverter esta conclusão? O registro será removido e o serviço voltará a ser agendado com base na execução anterior.</p>`;
         const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-danger" data-action="confirm-revert-task">Confirmar Reversão</button>`;
-        showModal('Reverter Conclusão de Tarefa', bodyHtml, footerHtml);
+        showModal('Reverter Conclusão de Serviço', bodyHtml, footerHtml);
     }
 
     function confirmRevertTask() {
@@ -738,7 +741,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const todayStr = today.toISOString().slice(0, 10);
         const bodyHtml = `
             <form id="report-form">
-                <p>Selecione o período para gerar o relatório de tarefas pendentes.</p>
+                <p>Selecione o período para gerar o relatório de serviços pendentes.</p>
                 <div class="form-layout">
                     <div class="form-group">
                         <label for="report-start-date">Data Inicial:</label>
@@ -795,7 +798,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const group = groupedByComponent[componentId];
             group.tasks.sort((a, b) => a.date - b.date);
             reportHTML += `<div class="component-section"><h2>${group.name}</h2><p><strong>Localização:</strong> ${group.location}</p>
-                <table><thead><tr><th>Tarefa</th><th>Periodicidade</th><th>Data Prevista</th><th>Criticidade</th><th class="obs-col">Observações</th></tr></thead><tbody>`;
+                <table><thead><tr><th>Serviço</th><th>Periodicidade</th><th>Data Prevista</th><th>Criticidade</th><th class="obs-col">Observações</th></tr></thead><tbody>`;
             group.tasks.forEach(task => {
                 reportHTML += `<tr><td>${task.tarefaDescricao}</td><td>${task.periodicidade}</td><td>${task.date.toLocaleDateString('pt-BR')}</td><td>${task.criticidade}</td><td></td></tr>`;
             });
@@ -831,7 +834,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     
         if (filteredTasks.length === 0) {
-            alert('Nenhuma tarefa pendente encontrada para o período selecionado.');
+            alert('Nenhum serviço pendente encontrado para o período selecionado.');
             return;
         }
     
@@ -920,6 +923,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (groupHeader) {
                         groupHeader.parentElement.classList.toggle('open');
                     }
+                    break;
+                case 'toggle-alert-box':
+                    actionButton.parentElement.classList.toggle('open');
                     break;
                 case 'gerar-relatorio': handleShowReportModal(); break;
                 case 'gerar-relatorio-confirmado': handleGenerateReportFromModal(); break;

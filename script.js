@@ -679,7 +679,7 @@ document.addEventListener('DOMContentLoaded', () => {
             painelScreen.innerHTML = `
                 <div class="card" style="text-align: center; padding: 40px;">
                     <i class="fas fa-rocket" style="font-size: 3em; color: var(--primary-color); margin-bottom: 20px;"></i>
-                    <h1 class="screen-title">Bem-vindo ao Gestor de Manutenção!</h1>
+                    <h1 class="screen-title"><span style="font-size: 85%">Bem-vindo ao</span><br>Gestor de Manutenção Predial Preventiva!</h1><br>
                     <p style="font-size: 1.1em; max-width: 600px; margin: 0 auto 25px;">
                         Parece que você está começando agora. O primeiro passo é organizar seus planos de manutenção.
                     </p>

@@ -687,9 +687,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button class="btn btn-primary" data-action="go-to-grandes-areas">
                             <i class="fas fa-tags"></i> Comece cadastrando uma Grande Área
                         </button>
-                        <button class="btn btn-secondary" data-action="go-to-sistemas">
-                            <i class="fas fa-tag"></i> Ou crie seu primeiro Sistema
-                        </button>
                     </div>
                 </div>
             `;

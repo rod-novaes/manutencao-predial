@@ -8,12 +8,27 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <!-- ===== CABEÇALHO DA APLICAÇÃO (NOVO LAYOUT) ===== -->
+    <header id="app-header">
+        <div id="header-title">
+            <h1>Gestor de Manutenção Predial</h1>
+            <span class="version-info">Versão beta 26</span>
+        </div>
+        <div id="header-actions">
+            <button class="btn btn-toolbar" data-action="file-new" title="Criar um novo arquivo de manutenção do zero">
+                <i class="fas fa-file"></i> Novo
+            </button>
+            <button class="btn btn-toolbar" data-action="file-open" title="Abrir um arquivo .json existente">
+                <i class="fas fa-folder-open"></i> Abrir...
+            </button>
+            <button class="btn btn-toolbar" data-action="file-save" title="Salvar as alterações atuais em um arquivo .json">
+                <i class="fas fa-save"></i> Salvar Como...
+            </button>
+        </div>
+    </header>
+
     <div id="app-wrapper">
         <nav id="main-menu">
-            <div class="menu-header">
-                <h2>Gestor de Manutenção Predial</h2>
-                <span class="version-info">Versão beta 15</span>
-            </div>
             <ul>
                 <li><a href="#" class="nav-link active" data-target="screen-painel"><i class="fas fa-tachometer-alt"></i> Painel</a></li>
                 <li class="dropdown">
@@ -21,11 +36,13 @@
                     <ul class="dropdown-content">
                         <li><a href="#" class="nav-link" data-target="screen-lista-grandes-areas"><i class="fas fa-tags"></i> Grandes Áreas</a></li>
                         <li><a href="#" class="nav-link" data-target="screen-lista-sistemas"><i class="fas fa-tag"></i> Sistemas</a></li>
+                        <li><a href="#" class="nav-link" data-target="screen-lista-subsistemas"><i class="fas fa-stream"></i> Subsistemas</a></li>
                         <li><a href="#" class="nav-link" data-target="screen-lista-componentes"><i class="fas fa-cogs"></i> Componentes</a></li>
                     </ul>
                 </li>
                 <li><a href="#" class="nav-link" data-target="screen-manutencoes"><i class="fas fa-calendar-check"></i> Manutenções</a></li>
-                <li><a href="#" class="nav-link" data-target="screen-configuracoes"><i class="fas fa-cog"></i> Configurações</a></li>
+                <li><a href="#" class="nav-link" data-target="screen-indicadores"><i class="fas fa-chart-line"></i> Indicadores</a></li>
+                <li><a href="#" class="nav-link" data-target="screen-relatorios"><i class="fas fa-chart-pie"></i> Relatórios</a></li>
             </ul>
         </nav>
 
@@ -35,7 +52,6 @@
                 <div class="screen-header" id="painel-header">
                     <h1 class="screen-title" id="painel-main-title">Painel de Serviços</h1>
                     <div>
-                        <button class="btn btn-primary" data-action="gerar-relatorio"><i class="fas fa-print"></i> Gerar Relatório</button>
                         <button class="btn btn-secondary" id="clear-filter-btn" data-action="clear-filter" style="display: none; margin-left: 10px;"><i class="fas fa-times"></i> Limpar Filtro</button>
                     </div>
                 </div>
@@ -44,6 +60,13 @@
                         <div class="card alerta-box" id="alertas-criticas">
                             <h3 data-action="toggle-alert-box">
                                 <span><i class="fas fa-exclamation-triangle"></i> VENCIDOS</span>
+                                <i class="fas fa-chevron-down expand-icon"></i>
+                            </h3>
+                            <ul class="lista-os"></ul>
+                        </div>
+                        <div class="card alerta-box" id="alertas-pendentes">
+                            <h3 data-action="toggle-alert-box">
+                                <span><i class="fas fa-pause-circle"></i> SERVIÇOS PENDENTES</span>
                                 <i class="fas fa-chevron-down expand-icon"></i>
                             </h3>
                             <ul class="lista-os"></ul>
@@ -57,7 +80,7 @@
                         </div>
                         <div class="card alerta-box" id="alertas-proximo-mes">
                             <h3 data-action="toggle-alert-box">
-                                <span><i class="fas fa-calendar-alt"></i> PRÓXIMO MÊS</span>
+                                <span><i class="fas fa-layer-group"></i> PRÓXIMOS MESES</span>
                                 <i class="fas fa-chevron-down expand-icon"></i>
                             </h3>
                             <ul class="lista-os"></ul>
@@ -78,6 +101,22 @@
                 <div class="info-note">
                     <i class="fas fa-info-circle"></i>
                     <p>Aqui você pode cadastrar os <strong>Componentes, Ativos, Máquinas ou Equipamentos</strong> que receberão a manutenção.</p>
+                </div>
+                <div class="card filter-bar" id="component-filters">
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label for="filter-comp-grande-area">Grande Área</label>
+                            <select id="filter-comp-grande-area"><option value="">Todas</option></select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-comp-sistema">Sistema</label>
+                            <select id="filter-comp-sistema" disabled><option value="">Todos</option></select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-comp-subsistema">Subsistema</label>
+                            <select id="filter-comp-subsistema" disabled><option value="">Todos</option></select>
+                        </div>
+                    </div>
                 </div>
                 <div class="card">
                     <table>
@@ -115,15 +154,56 @@
                     <i class="fas fa-info-circle"></i>
                     <p>Em <strong>Sistemas</strong>, você cadastra <strong>planos de manutenção padrão</strong> para cada sistema de componentes (ex: Grupo Gerador, Quadro de Distribuição), definindo os serviços e suas periodicidades.</p>
                 </div>
+                <div class="card filter-bar" id="sistemas-filters">
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label for="filter-sis-grande-area">Filtrar por Grande Área</label>
+                            <select id="filter-sis-grande-area">
+                                <option value="">Todas</option>
+                                <!-- Opções serão populadas pelo JS -->
+                            </select>
+                        </div>
+                    </div>
+                </div>
                 <div class="card">
                     <table>
-                        <thead><tr><th>Nome do Sistema</th><th>Grande Área</th><th>Área Responsável</th><th>Ações</th></tr></thead>
+                        <thead><tr><th>Nome do Sistema</th><th>Grande Área</th><th>Área Responsável</th><th>Pessoa Responsável</th><th>Ações</th></tr></thead>
+                        <tbody><!-- Conteúdo gerado pelo JS --></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- NOVA TELA 5: Lista de Subsistemas -->
+            <div id="screen-lista-subsistemas" class="screen">
+                <div class="screen-header">
+                    <h1 class="screen-title">Subsistemas</h1>
+                    <button class="btn btn-primary" data-action="novo-subsistema"><i class="fas fa-plus"></i> Novo Subsistema</button>
+                </div>
+                <div class="info-note">
+                    <i class="fas fa-info-circle"></i>
+                    <p>Os <strong>Subsistemas</strong> detalham um Sistema principal, agrupando componentes com planos de manutenção mais específicos (ex: Condensadoras, Evaporadoras).</p>
+                </div>
+                <div class="card filter-bar" id="subsistemas-filters">
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label for="filter-subsis-grande-area">Grande Área</label>
+                            <select id="filter-subsis-grande-area"><option value="">Todas</option></select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-subsis-sistema">Sistema</label>
+                            <select id="filter-subsis-sistema" disabled><option value="">Todos</option></select>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <table>
+                        <thead><tr><th>Nome do Subsistema</th><th>Sistema Pai</th><th>Ações</th></tr></thead>
                         <tbody><!-- Conteúdo gerado pelo JS --></tbody>
                     </table>
                 </div>
             </div>
             
-            <!-- TELA 5: Manutenções Preventivas -->
+            <!-- TELA 6: Manutenções Preventivas -->
              <div id="screen-manutencoes" class="screen">
                 <div class="screen-header">
                     <h1 class="screen-title">Manutenções Preventivas</h1>
@@ -140,6 +220,10 @@
                                 <select id="filter-sistema" disabled><option value="">Todos</option></select>
                             </div>
                             <div class="filter-group">
+                                <label for="filter-subsistema">Subsistema</label>
+                                <select id="filter-subsistema" disabled><option value="">Todos</option></select>
+                            </div>
+                            <div class="filter-group">
                                 <label for="filter-componente">Componente</label>
                                 <select id="filter-componente" disabled><option value="">Todos</option></select>
                             </div>
@@ -151,7 +235,8 @@
                                     <option value="">Todos</option>
                                     <option value="A vencer">A vencer</option>
                                     <option value="Atrasada">Atrasada</option>
-                                    <option value="Concluída">Concluída</option>
+                                    <option value="Pendente">Pendente</option>
+                                    <option value="Concluído">Concluído</option>
                                 </select>
                             </div>
                             <div class="filter-group">
@@ -172,11 +257,12 @@
                     </div>
                 </div>
                  <div class="card">
+                    <div class="pagination-controls"></div>
                     <table id="maintenance-table">
                         <thead>
                             <tr>
                                 <th class="sortable" data-sort-key="componenteName">Componente <span class="sort-icon"></span></th>
-                                <th class="sortable" data-sort-key="tarefaDescricao">Serviço <span class="sort-icon"></span></th>
+                                <th class="sortable" data-sort-key="servicoDescricao">Serviço <span class="sort-icon"></span></th>
                                 <th class="sortable" data-sort-key="criticidade">Criticidade <span class="sort-icon"></span></th>
                                 <th class="sortable" data-sort-key="date">Data Prevista <span class="sort-icon"></span></th>
                                 <th class="sortable" data-sort-key="status">Status <span class="sort-icon"></span></th>
@@ -185,26 +271,140 @@
                         </thead>
                         <tbody id="maintenance-table-body"><!-- Conteúdo gerado pelo JS --></tbody>
                     </table>
+                    <div class="pagination-controls"></div>
                 </div>
              </div>
 
-            <!-- TELA 6: Formulário de Ordem de Serviço (Legado/Oculto) -->
-            <div id="screen-form-os" class="screen">
-                <!-- Esta tela não é mais usada ativamente no fluxo principal -->
-            </div>
+            <!-- TELA DE INDICADORES -->
+            <div id="screen-indicadores" class="screen">
+                <h1 class="screen-title">Painel de Indicadores</h1>
 
-            <!-- TELA 7: Configurações -->
-            <div id="screen-configuracoes" class="screen">
-                <h1 class="screen-title">Configurações</h1>
-                <div class="card">
-                    <h3>Backup e Restauração</h3>
-                    <p>Mantenha seus dados seguros. Crie backups regularmente.</p>
-                    <div class="form-actions">
-                         <button class="btn btn-primary" data-action="criar-backup"><i class="fas fa-download"></i> Criar Backup</button>
-                         <button class="btn btn-secondary" data-action="restaurar-backup"><i class="fas fa-upload"></i> Restaurar Backup</button>
+                <!-- Barra de Filtros -->
+                <div class="card filter-bar" id="indicadores-filters">
+                    <!-- Ordem dos blocos de filtro alterada para corresponder à tela de Manutenção -->
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label for="filter-indicadores-grande-area">Grande Área</label>
+                            <select id="filter-indicadores-grande-area"><option value="">Todas</option></select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-indicadores-sistema">Sistema</label>
+                            <select id="filter-indicadores-sistema" disabled><option value="">Todos</option></select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-indicadores-criticidade">Criticidade</label>
+                             <select id="filter-indicadores-criticidade">
+                                <option value="">Todas</option>
+                                <option value="Classe A">Classe A</option>
+                                <option value="Classe B">Classe B</option>
+                                <option value="Classe C">Classe C</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="filter-row">
+                         <div class="filter-group">
+                            <label for="filter-indicadores-inicio">De</label>
+                            <input type="date" id="filter-indicadores-inicio">
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-indicadores-fim">Até</label>
+                            <input type="date" id="filter-indicadores-fim">
+                        </div>
+                    </div>
+                    <div class="filter-row quick-filters">
+                        <button class="btn btn-secondary" data-action="filter-indicadores-month">Este Mês</button>
+                        <button class="btn btn-secondary" data-action="filter-indicadores-90-days">Últimos 90 dias</button>
+                        <button class="btn btn-secondary" data-action="filter-indicadores-year">Este Ano</button>
+                        <button class="btn btn-secondary" data-action="clear-indicadores-filters">Limpar Filtros</button>
+                    </div>
+                </div>
+
+                <!-- KPIs Principais -->
+                <div class="indicadores-kpi-row">
+                    <div class="card kpi-card">
+                        <h4>Taxa de Conformidade (PCM)</h4>
+                        <p id="kpi-conformidade" class="kpi-value">--%</p>
+                    </div>
+                    <div class="card kpi-card">
+                        <h4>Backlog (Serviços Atrasados)</h4>
+                        <p id="kpi-backlog" class="kpi-value">--</p>
+                    </div>
+                    <div class="card kpi-card">
+                        <h4>OS Concluídas no Período</h4>
+                        <p id="kpi-concluidas" class="kpi-value">--</p>
+                    </div>
+                </div>
+
+                <!-- Linha de Gráficos -->
+                <div class="indicadores-grid">
+                    <div class="card chart-card">
+                        <h5>Status Geral dos Serviços</h5>
+                        <canvas id="status-geral-chart"></canvas>
+                    </div>
+                    <div class="card chart-card">
+                        <h5>Planejado vs. Realizado (Últimos 6 Meses)</h5>
+                        <canvas id="planejado-realizado-chart"></canvas>
+                    </div>
+                    <div class="card chart-card">
+                        <h5>Serviços por Grande Área</h5>
+                        <canvas id="servicos-area-chart"></canvas>
+                    </div>
+                    <div class="card chart-card">
+                        <h5>Serviços por Criticidade</h5>
+                        <canvas id="servicos-criticidade-chart"></canvas>
+                    </div>
+                    <div class="card chart-card full-width">
+                        <h5>Top 5 Componentes com Mais Atrasos</h5>
+                        <canvas id="top-componentes-chart"></canvas>
                     </div>
                 </div>
             </div>
+
+            <!-- TELA DE RELATÓRIOS (LAYOUT ATUALIZADO) -->
+            <div id="screen-relatorios" class="screen">
+                <h1 class="screen-title">Central de Relatórios e Exportações</h1>
+                
+                <div class="card">
+                    <h3>Ciclo de Trabalho Operacional</h3>
+                    <div class="card-layout-row">
+                        <div class="layout-column">
+                            <h4>1. Exportar Plano de Manutenção</h4>
+                            <p>Gere um arquivo XLSX com os próximos serviços. Dentro do fluxo planejado, este arquivo deve ser entregue à equipe ou empresa responsável pela execução.</p>
+                            <div class="form-actions">
+                                <button class="btn btn-primary" data-action="export-plan"><i class="fas fa-file-export"></i> Exportar Plano (.xlsx)</button>
+                            </div>
+                        </div>
+                        <div class="layout-column">
+                            <h4>2. Importar Relatório Técnico de Execução</h4>
+                            <p>Após a execução, importe o mesmo arquivo XLSX preenchido pela equipe para atualizar o status dos serviços em massa no sistema.</p>
+                            <div class="form-actions">
+                                <button class="btn btn-secondary" data-action="import-report"><i class="fas fa-file-import"></i> Importar Relatório (.xlsx)</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Exportações Completas (Documentação e Backup)</h3>
+                    <div class="card-layout-row">
+                        <div class="layout-column">
+                             <h4>Exportar Plano de Manutenção, Operação e Controle (PMOC)</h4>
+                             <p>Gere um documento em formato XLSX contendo todos os dados de grandes áreas, sistemas, subsistemas e componentes, formatado como um PMOC para fins de documentação e conformidade.</p>
+                             <div class="form-actions">
+                                <button class="btn btn-primary" data-action="export-pmoc"><i class="fas fa-clipboard-list"></i> Exportar PMOC (.xlsx)</button>
+                             </div>
+                        </div>
+                        <div class="layout-column">
+                            <h4>Exportar Backup Completo</h4>
+                            <p>Exporte todos os dados do aplicativo (cadastros e histórico) em um único arquivo XLSX. Ideal para análise externa ou para manter uma cópia de segurança. O arquivo gerado também pode servir como uma opção de saída segura do aplicativo, sem perda de dados.</p>
+                            <div class="form-actions">
+                                <button class="btn btn-primary" data-action="export-backup"><i class="fas fa-database"></i> Exportar Backup (.xlsx)</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </main>
     </div>
 
@@ -224,8 +424,11 @@
             </div>
         </div>
     </div>
-
-    <script src="mock-data.js"></script>
+    
+    <!-- Biblioteca para gerar arquivos XLSX -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+    <!-- Biblioteca para gerar gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

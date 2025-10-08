@@ -1,12 +1,56 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- ESTADO DA APLICAÇÃO ---
+    let appData;
+    const APP_DATA_KEY = 'gestorManutencaoData';
+
     let activeScreen = 'screen-painel';
-    const today = new Date('2025-09-11T12:00:00'); // Data de referência "hoje", NUNCA MUDA
-    let calendarDate = new Date(today); // Data para navegação do calendário, PODE MUDAR
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normaliza a data para o início do dia
+    let calendarDate = new Date(today);
     let activeDateFilter = null;
     let editingItemId = null;
     let sortColumn = 'date';
     let sortDirection = 'asc';
+    let pendingLoadedData = null;
+    let maintenanceCurrentPage = 1;
+    const maintenanceItemsPerPage = 15;
+    let chartInstances = {};
+
+    // --- FUNÇÕES DE PERSISTÊNCIA (LOCALSTORAGE) ---
+    function getInitialEmptyData() {
+        return {
+            grandesAreas: [],
+            sistemas: [],
+            subSistemas: [],
+            componentes: [],
+            historicoManutencoes: []
+        };
+    }
+
+    function saveData() {
+        try {
+            const dataString = JSON.stringify(appData);
+            localStorage.setItem(APP_DATA_KEY, dataString);
+        } catch (error)
+        {
+            console.error("Erro ao salvar os dados no localStorage:", error);
+            alert("Não foi possível salvar suas alterações. O armazenamento local pode estar cheio ou indisponível.");
+        }
+    }
+
+    function loadData() {
+        const savedData = localStorage.getItem(APP_DATA_KEY);
+        if (savedData) {
+            try {
+                appData = JSON.parse(savedData);
+            } catch (error) {
+                console.error("Erro ao carregar os dados do localStorage. Iniciando com dados vazios.", error);
+                appData = getInitialEmptyData();
+            }
+        } else {
+            appData = getInitialEmptyData();
+        }
+    }
 
     // --- ELEMENTOS DO DOM ---
     const modalContainer = document.getElementById('modal-container');
@@ -45,6 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
         switch (periodicity) {
             case 'Semanal': nextDate.setDate(nextDate.getDate() + 7); break;
             case 'Mensal': nextDate.setMonth(nextDate.getMonth() + 1); break;
+            case 'Bimestral': nextDate.setMonth(nextDate.getMonth() + 2); break;
             case 'Trimestral': nextDate.setMonth(nextDate.getMonth() + 3); break;
             case 'Semestral': nextDate.setMonth(nextDate.getMonth() + 6); break;
             case 'Anual': nextDate.setFullYear(nextDate.getFullYear() + 1); break;
@@ -53,78 +98,113 @@ document.addEventListener('DOMContentLoaded', () => {
         return nextDate;
     }
 
-    function generateTaskInstances() {
-        const upcomingTasks = [];
-        MOCK_DATA.componentes.forEach(componente => {
-            const sistema = MOCK_DATA.sistemas.find(s => s.id === componente.sistemaId);
+    function generateServiceInstances() {
+        const upcomingServices = [];
+        const osCounters = {};
+
+        appData.componentes.forEach(componente => {
+            const sistema = appData.sistemas.find(s => s.id === componente.sistemaId);
             if (!sistema) return;
 
-            const inheritedTasks = sistema.checklist || [];
-            const specificTasks = componente.tarefasEspecificas || [];
-            const allTasksForComponent = [...inheritedTasks, ...specificTasks];
+            const subSistema = componente.subSistemaId ? appData.subSistemas.find(ss => ss.id === componente.subSistemaId) : null;
 
-            allTasksForComponent.forEach(tarefa => {
-                const historyForTask = MOCK_DATA.historicoManutencoes
-                    .filter(h => h.componenteId === componente.id && h.tarefaId === tarefa.id)
+            const inheritedServices = sistema.checklist || [];
+            const subSystemServices = subSistema ? subSistema.checklist : [];
+            const specificServices = componente.servicosEspecificos || [];
+            const allServicesForComponent = [...inheritedServices, ...subSystemServices, ...specificServices];
+
+            allServicesForComponent.forEach(servico => {
+                const historyForService = appData.historicoManutencoes
+                    .filter(h => h.componenteId === componente.id && h.servicoId === servico.id)
                     .sort((a, b) => new Date(b.data) - new Date(a.data));
-
-                let dueDate;
-                if (historyForTask.length > 0) {
-                    const lastCompletionDate = new Date(historyForTask[0].data + 'T12:00:00');
-                    dueDate = calculateNextDueDate(lastCompletionDate, tarefa.periodicidade);
-                } else {
-                    const startDate = componente.dataInicio ? componente.dataInicio : today.toISOString().slice(0, 10);
-                    dueDate = new Date(startDate + 'T12:00:00');
+                
+                if (historyForService.length > 0 && historyForService[0].status === 'Pendente') {
+                    return; 
                 }
 
-                const status = dueDate < today ? 'Atrasada' : 'A vencer';
+                let lastCompletionDate;
+                const lastCompletedEvent = historyForService.find(h => h.status === 'Concluído');
 
-                upcomingTasks.push({
-                    componenteId: componente.id,
-                    componenteName: componente.nome,
-                    tarefaId: tarefa.id,
-                    tarefaDescricao: tarefa.tarefa,
-                    periodicidade: tarefa.periodicidade,
-                    grandeAreaId: componente.grandeAreaId,
-                    sistemaId: componente.sistemaId,
-                    criticidade: componente.criticidade,
-                    date: dueDate,
-                    status: status,
-                    type: 'upcoming'
+                if (lastCompletedEvent) {
+                    lastCompletionDate = new Date(lastCompletedEvent.data + 'T12:00:00');
+                } else {
+                    const startDate = componente.dataInicio ? componente.dataInicio : today.toISOString().slice(0, 10);
+                    lastCompletionDate = new Date(startDate + 'T12:00:00');
+                    const dueDate = lastCompletionDate;
+                    const status = dueDate < today ? 'Atrasada' : 'A vencer';
+                    
+                    const year = dueDate.getFullYear();
+                    const month = String(dueDate.getMonth() + 1).padStart(2, '0');
+                    const osKey = `${year}-${month}`;
+                    if (!osCounters[osKey]) osCounters[osKey] = 1;
+                    const osNumero = `${osKey}-${String(osCounters[osKey]++).padStart(4, '0')}`;
+
+                    upcomingServices.push({
+                        componenteId: componente.id, componenteName: componente.nome, servicoId: servico.id,
+                        servicoDescricao: servico.servico, grandeAreaId: componente.grandeAreaId, sistemaId: componente.sistemaId, 
+                        subSistemaId: componente.subSistemaId, criticidade: componente.criticidade, periodicidade: servico.periodicidade,
+                        date: dueDate, status: status, type: 'upcoming', osNumero: osNumero
+                    });
+                    return;
+                }
+                
+                const dueDate = calculateNextDueDate(lastCompletionDate, servico.periodicidade);
+                const status = dueDate < today ? 'Atrasada' : 'A vencer';
+                const year = dueDate.getFullYear();
+                const month = String(dueDate.getMonth() + 1).padStart(2, '0');
+                const osKey = `${year}-${month}`;
+                if (!osCounters[osKey]) osCounters[osKey] = 1;
+                const osNumero = `${osKey}-${String(osCounters[osKey]++).padStart(4, '0')}`;
+
+                upcomingServices.push({
+                    componenteId: componente.id, componenteName: componente.nome,
+                    servicoId: servico.id, servicoDescricao: servico.servico,
+                    periodicidade: servico.periodicidade, grandeAreaId: componente.grandeAreaId,
+                    sistemaId: componente.sistemaId, subSistemaId: componente.subSistemaId,
+                    criticidade: componente.criticidade, date: dueDate,
+                    status: status, type: 'upcoming', osNumero: osNumero
                 });
             });
         });
-        return upcomingTasks;
+        return upcomingServices;
     }
 
-    function getAllMaintenanceTasksForDisplay() {
-        const upcomingAndOverdue = generateTaskInstances();
-        const completed = MOCK_DATA.historicoManutencoes.map(hist => {
-            const componente = MOCK_DATA.componentes.find(c => c.id === hist.componenteId);
+    function getAllMaintenanceServicesForDisplay() {
+        const upcomingAndOverdue = generateServiceInstances();
+        
+        const fromHistory = appData.historicoManutencoes.map(hist => {
+            const componente = appData.componentes.find(c => c.id === hist.componenteId);
             if (!componente) return null;
-            const sistema = MOCK_DATA.sistemas.find(s => s.id === componente.sistemaId);
-            let tarefa = sistema ? sistema.checklist.find(t => t.id === hist.tarefaId) : null;
-            if (!tarefa && componente.tarefasEspecificas) {
-                tarefa = componente.tarefasEspecificas.find(t => t.id === hist.tarefaId);
-            }
+            
+            const sistema = appData.sistemas.find(s => s.id === componente.sistemaId);
+            const subSistema = componente.subSistemaId ? appData.subSistemas.find(ss => ss.id === componente.subSistemaId) : null;
+
+            let servico = sistema ? sistema.checklist.find(s => s.id === hist.servicoId) : null;
+            if (!servico && subSistema) servico = subSistema.checklist.find(s => s.id === hist.servicoId);
+            if (!servico && componente.servicosEspecificos) servico = componente.servicosEspecificos.find(s => s.id === hist.servicoId);
+            
             return {
                 historyId: hist.id,
                 componenteId: componente.id,
                 componenteName: componente.nome,
-                tarefaId: hist.tarefaId,
-                tarefaDescricao: tarefa ? tarefa.tarefa : 'Serviço não encontrado',
-                periodicidade: tarefa ? tarefa.periodicidade : 'N/A',
+                servicoId: hist.servicoId,
+                servicoDescricao: servico ? servico.servico : 'Serviço não encontrado',
+                periodicidade: servico ? servico.periodicidade : 'N/A',
                 grandeAreaId: componente.grandeAreaId,
                 sistemaId: componente.sistemaId,
+                subSistemaId: componente.subSistemaId,
                 criticidade: componente.criticidade,
                 date: new Date(hist.data + 'T12:00:00'),
-                status: 'Concluída',
-                type: 'completed',
-                os: hist.os,
-                obs: hist.obs
+                status: hist.status,
+                type: 'from_history',
+                osNumero: hist.os,
+                obs: hist.obs,
+                motivo: hist.motivo,
+                motivoDetalhado: hist.motivoDetalhado,
             };
         }).filter(Boolean);
-        return [...upcomingAndOverdue, ...completed];
+
+        return [...upcomingAndOverdue, ...fromHistory];
     }
 
     // --- FUNÇÕES DE CRUD ---
@@ -141,7 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function handleEditGrandeArea(id) {
         editingItemId = id;
-        const grandeArea = MOCK_DATA.grandesAreas.find(g => g.id === id);
+        const grandeArea = appData.grandesAreas.find(g => g.id === id);
         if (!grandeArea) return;
         const formHtml = getGrandeAreaFormHTML(grandeArea);
         const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-grande-area">Salvar Alterações</button>`;
@@ -150,7 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function handleDeleteGrandeArea(id) {
         editingItemId = id;
-        const grandeArea = MOCK_DATA.grandesAreas.find(g => g.id === id);
+        const grandeArea = appData.grandesAreas.find(g => g.id === id);
         if (!grandeArea) return;
         const bodyHtml = `<p>Você tem certeza que deseja excluir a grande área <strong>"${grandeArea.nome}"</strong>? Esta ação não pode ser desfeita.</p>`;
         const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-danger" data-action="confirm-delete-grande-area">Confirmar Exclusão</button>`;
@@ -160,29 +240,31 @@ document.addEventListener('DOMContentLoaded', () => {
         const input = document.getElementById('grande-area-name');
         if (!input.value.trim()) { alert('O nome da grande área não pode estar em branco.'); return; }
         if (editingItemId) {
-            const grandeArea = MOCK_DATA.grandesAreas.find(g => g.id === editingItemId);
+            const grandeArea = appData.grandesAreas.find(g => g.id === editingItemId);
             grandeArea.nome = input.value;
         } else {
-            const newId = MOCK_DATA.grandesAreas.length > 0 ? Math.max(...MOCK_DATA.grandesAreas.map(g => g.id)) + 1 : 1;
-            MOCK_DATA.grandesAreas.push({ id: newId, nome: input.value });
+            const newId = appData.grandesAreas.length > 0 ? Math.max(...appData.grandesAreas.map(g => g.id)) + 1 : 1;
+            appData.grandesAreas.push({ id: newId, nome: input.value });
         }
+        saveData();
         renderListaGrandesAreas();
         closeModal();
     }
     function confirmDeleteGrandeArea() {
-        MOCK_DATA.grandesAreas = MOCK_DATA.grandesAreas.filter(g => g.id !== editingItemId);
+        appData.grandesAreas = appData.grandesAreas.filter(g => g.id !== editingItemId);
+        saveData();
         renderListaGrandesAreas();
         closeModal();
     }
 
     function getSistemaFormHTML(sistema = {}) {
-        const { nome = '', grandeAreaId = '', areaResponsavel = '', checklist = [{tarefa: '', periodicidade: 'Mensal'}] } = sistema;
-        const grandeAreaOptions = MOCK_DATA.grandesAreas.map(ga => `<option value="${ga.id}" ${ga.id === grandeAreaId ? 'selected' : ''}>${ga.nome}</option>`).join('');
+        const { nome = '', grandeAreaId = '', areaResponsavel = '', pessoaResponsavel = '', checklist = [{servico: '', periodicidade: 'Mensal'}] } = sistema;
+        const grandeAreaOptions = appData.grandesAreas.map(ga => `<option value="${ga.id}" ${ga.id === grandeAreaId ? 'selected' : ''}>${ga.nome}</option>`).join('');
         const checklistItems = checklist.map((item) => {
             const selectedPeriodicidade = item.periodicidade || 'Mensal';
-            const optionsWithSelected = ['Semanal', 'Mensal', 'Trimestral', 'Semestral', 'Anual'].map(p => `<option value="${p}" ${p === selectedPeriodicidade ? 'selected' : ''}>${p}</option>`).join('');
+            const optionsWithSelected = ['Semanal', 'Mensal', 'Bimestral', 'Trimestral', 'Semestral', 'Anual'].map(p => `<option value="${p}" ${p === selectedPeriodicidade ? 'selected' : ''}>${p}</option>`).join('');
             return `<div class="checklist-item">
-                        <input type="text" class="checklist-item-input" value="${item.tarefa || ''}" placeholder="Descreva o serviço">
+                        <input type="text" class="checklist-item-input" value="${item.servico || ''}" placeholder="Descreva o serviço">
                         <select class="checklist-item-periodicity">${optionsWithSelected}</select>
                         <button class="btn btn-danger remove-item-btn" data-action="remove-checklist-item" title="Remover item"><i class="fas fa-trash-alt"></i></button>
                     </div>`;
@@ -191,7 +273,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="form-group"><label for="sistema-grande-area">Grande Área:</label><select id="sistema-grande-area" required><option value="">Selecione...</option>${grandeAreaOptions}</select></div>
                     <div class="form-group"><label for="sistema-name">Nome do Sistema:</label><input type="text" id="sistema-name" value="${nome}" required></div>
                     <div class="form-group"><label for="sistema-area-responsavel">Área Responsável:</label><input type="text" id="sistema-area-responsavel" value="${areaResponsavel}"></div>
-                    <div class="form-group"><label>Serviços do Plano de Manutenção:</label><div class="checklist-container">${checklistItems}</div><button type="button" class="btn btn-secondary" data-action="add-checklist-item"><i class="fas fa-plus"></i> Adicionar Serviço</button></div>
+                    <div class="form-group"><label for="sistema-pessoa-responsavel">Pessoa Responsável:</label><input type="text" id="sistema-pessoa-responsavel" value="${pessoaResponsavel}"></div>
+                    <div class="form-group">
+                        <label>Serviços Padrão (Herdados por todos os Componentes deste Sistema):</label>
+                        <div class="info-note"><i class="fas fa-info-circle"></i><p>Os serviços aqui cadastrados serão aplicados a <strong>todos</strong> os Componentes e Subsistemas associados a este Sistema.</p></div>
+                        <div class="checklist-container">${checklistItems}</div>
+                        <button type="button" class="btn btn-secondary" data-action="add-checklist-item"><i class="fas fa-plus"></i> Adicionar Serviço</button>
+                    </div>
                 </form>`;
     }
     function handleAddSistema() {
@@ -202,7 +290,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function handleEditSistema(id) {
         editingItemId = id;
-        const sistema = MOCK_DATA.sistemas.find(s => s.id === id);
+        const sistema = appData.sistemas.find(s => s.id === id);
         if (!sistema) return;
         const formHtml = getSistemaFormHTML(sistema);
         const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-sistema">Salvar Alterações</button>`;
@@ -210,7 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function handleDeleteSistema(id) {
         editingItemId = id;
-        const sistema = MOCK_DATA.sistemas.find(s => s.id === id);
+        const sistema = appData.sistemas.find(s => s.id === id);
         if (!sistema) return;
         const bodyHtml = `<p>Você tem certeza que deseja excluir o sistema <strong>"${sistema.nome}"</strong>?</p>`;
         const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-danger" data-action="confirm-delete-sistema">Confirmar Exclusão</button>`;
@@ -220,42 +308,158 @@ document.addEventListener('DOMContentLoaded', () => {
         const grandeAreaId = parseInt(document.getElementById('sistema-grande-area').value);
         const nome = document.getElementById('sistema-name').value.trim();
         const areaResponsavel = document.getElementById('sistema-area-responsavel').value.trim();
+        const pessoaResponsavel = document.getElementById('sistema-pessoa-responsavel').value.trim();
         const checklistItems = document.querySelectorAll('#sistema-form .checklist-item');
         const checklist = Array.from(checklistItems).map((item, index) => {
-            const tarefa = item.querySelector('.checklist-item-input').value.trim();
+            const servico = item.querySelector('.checklist-item-input').value.trim();
             const periodicidade = item.querySelector('.checklist-item-periodicity').value;
-            if (!tarefa) return null;
+            if (!servico) return null;
             const idPrefix = editingItemId ? `s${editingItemId}` : 'new';
             const id = `${idPrefix}-t${Date.now() + index}`;
-            return { id, tarefa, periodicidade };
+            return { id, servico, periodicidade };
         }).filter(Boolean);
         if (!nome || !grandeAreaId) { alert('Nome do Sistema e Grande Área são obrigatórios.'); return; }
-        const data = { grandeAreaId, nome, areaResponsavel, checklist };
+        const data = { grandeAreaId, nome, areaResponsavel, pessoaResponsavel, checklist };
         if (editingItemId) {
-            const index = MOCK_DATA.sistemas.findIndex(s => s.id === editingItemId);
-            const originalSystem = MOCK_DATA.sistemas[index];
-            data.checklist.forEach((newTask) => {
-                const existingTask = originalSystem.checklist.find(oldTask => oldTask.tarefa === newTask.tarefa);
-                if (existingTask) newTask.id = existingTask.id;
+            const index = appData.sistemas.findIndex(s => s.id === editingItemId);
+            const originalSystem = appData.sistemas[index];
+            data.checklist.forEach((newService) => {
+                const existingService = originalSystem.checklist.find(oldService => oldService.servico === newService.servico);
+                if (existingService) newService.id = existingService.id;
             });
-            MOCK_DATA.sistemas[index] = { ...originalSystem, ...data };
+            appData.sistemas[index] = { ...originalSystem, ...data };
         } else {
-            const newId = MOCK_DATA.sistemas.length > 0 ? Math.max(...MOCK_DATA.sistemas.map(s => s.id)) + 1 : 1;
-            MOCK_DATA.sistemas.push({ id: newId, ...data });
+            const newId = appData.sistemas.length > 0 ? Math.max(...appData.sistemas.map(s => s.id)) + 1 : 1;
+            appData.sistemas.push({ id: newId, ...data });
         }
+        saveData();
         renderListaSistemas();
         closeModal();
     }
     function confirmDeleteSistema() {
-        MOCK_DATA.sistemas = MOCK_DATA.sistemas.filter(s => s.id !== editingItemId);
+        appData.sistemas = appData.sistemas.filter(s => s.id !== editingItemId);
+        saveData();
         renderListaSistemas();
         closeModal();
     }
+
+    function getSubSistemaFormHTML(subSistema = {}) {
+        const { nome = '', sistemaId = '', checklist = [{servico: '', periodicidade: 'Mensal'}] } = subSistema;
+        const sistema = appData.sistemas.find(s => s.id === sistemaId);
+        const grandeAreaId = sistema ? sistema.grandeAreaId : '';
+
+        const grandeAreaOptions = appData.grandesAreas.map(ga => `<option value="${ga.id}" ${ga.id === grandeAreaId ? 'selected' : ''}>${ga.nome}</option>`).join('');
+        
+        const checklistItems = checklist.map((item) => {
+            const selectedPeriodicidade = item.periodicidade || 'Mensal';
+            const optionsWithSelected = ['Semanal', 'Mensal', 'Bimestral', 'Trimestral', 'Semestral', 'Anual'].map(p => `<option value="${p}" ${p === selectedPeriodicidade ? 'selected' : ''}>${p}</option>`).join('');
+            return `<div class="checklist-item">
+                        <input type="text" class="checklist-item-input" value="${item.servico || ''}" placeholder="Descreva o serviço">
+                        <select class="checklist-item-periodicity">${optionsWithSelected}</select>
+                        <button class="btn btn-danger remove-item-btn" data-action="remove-checklist-item" title="Remover item"><i class="fas fa-trash-alt"></i></button>
+                    </div>`;
+        }).join('');
+
+        return `<form id="subsistema-form">
+                    <div class="form-group">
+                        <label for="subsistema-grande-area">Grande Área:</label>
+                        <select id="subsistema-grande-area" required><option value="">Selecione...</option>${grandeAreaOptions}</select>
+                    </div>
+                    <div class="form-group">
+                        <label for="subsistema-sistema">Sistema Pai:</label>
+                        <select id="subsistema-sistema" required disabled><option value="">Selecione uma Grande Área</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="subsistema-name">Nome do Subsistema:</label>
+                        <input type="text" id="subsistema-name" value="${nome}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Serviços Específicos do Subsistema:</label>
+                        <div class="info-note"><i class="fas fa-info-circle"></i><p>Estes serviços serão aplicados <strong>apenas</strong> aos Componentes associados a este Subsistema, em adição aos serviços do Sistema Pai.</p></div>
+                        <div class="checklist-container">${checklistItems}</div>
+                        <button type="button" class="btn btn-secondary" data-action="add-checklist-item"><i class="fas fa-plus"></i> Adicionar Serviço</button>
+                    </div>
+                </form>`;
+    }
+    function updateSistemaOptionsForSubSistema(grandeAreaId, selectedSistemaId = null) {
+        const sistemaSelect = document.getElementById('subsistema-sistema');
+        const filteredSistemas = appData.sistemas.filter(s => s.grandeAreaId === grandeAreaId);
+        if (grandeAreaId && filteredSistemas.length > 0) {
+            sistemaSelect.innerHTML = '<option value="">Selecione...</option>' + filteredSistemas.map(s => `<option value="${s.id}" ${s.id === selectedSistemaId ? 'selected' : ''}>${s.nome}</option>`).join('');
+            sistemaSelect.disabled = false;
+        } else {
+            sistemaSelect.innerHTML = '<option value="">Nenhum sistema encontrado</option>';
+            sistemaSelect.disabled = true;
+        }
+    }
+    function handleAddSubSistema() {
+        editingItemId = null;
+        const formHtml = getSubSistemaFormHTML();
+        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-subsistema">Salvar</button>`;
+        showModal('Novo Subsistema', formHtml, footerHtml);
+    }
+    function handleEditSubSistema(id) {
+        editingItemId = id;
+        const subSistema = appData.subSistemas.find(ss => ss.id === id);
+        if (!subSistema) return;
+        
+        const formHtml = getSubSistemaFormHTML(subSistema);
+        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-subsistema">Salvar Alterações</button>`;
+        showModal('Editar Subsistema', formHtml, footerHtml);
+        
+        const sistemaPai = appData.sistemas.find(s => s.id === subSistema.sistemaId);
+        if (sistemaPai) {
+            document.getElementById('subsistema-grande-area').value = sistemaPai.grandeAreaId;
+            updateSistemaOptionsForSubSistema(sistemaPai.grandeAreaId, subSistema.sistemaId);
+        }
+    }
+    function handleDeleteSubSistema(id) {
+        editingItemId = id;
+        const subSistema = appData.subSistemas.find(ss => ss.id === id);
+        if (!subSistema) return;
+        const bodyHtml = `<p>Você tem certeza que deseja excluir o subsistema <strong>"${subSistema.nome}"</strong>?</p>`;
+        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-danger" data-action="confirm-delete-subsistema">Confirmar Exclusão</button>`;
+        showModal('Confirmar Exclusão', bodyHtml, footerHtml);
+    }
+    function saveSubSistema() {
+        const sistemaId = parseInt(document.getElementById('subsistema-sistema').value);
+        const nome = document.getElementById('subsistema-name').value.trim();
+        const checklistItems = document.querySelectorAll('#subsistema-form .checklist-item');
+        const checklist = Array.from(checklistItems).map((item, index) => {
+            const servico = item.querySelector('.checklist-item-input').value.trim();
+            const periodicidade = item.querySelector('.checklist-item-periodicity').value;
+            if (!servico) return null;
+            const idPrefix = editingItemId ? `ss${editingItemId}` : 'new';
+            const id = `${idPrefix}-t${Date.now() + index}`;
+            return { id, servico, periodicidade };
+        }).filter(Boolean);
+
+        if (!nome || !sistemaId) { alert('Nome do Subsistema e Sistema Pai são obrigatórios.'); return; }
+        const data = { sistemaId, nome, checklist };
+
+        if (editingItemId) {
+            const index = appData.subSistemas.findIndex(ss => ss.id === editingItemId);
+            appData.subSistemas[index] = { ...appData.subSistemas[index], ...data };
+        } else {
+            const newId = appData.subSistemas.length > 0 ? Math.max(...appData.subSistemas.map(ss => ss.id)) + 1 : 1;
+            appData.subSistemas.push({ id: newId, ...data });
+        }
+        saveData();
+        renderListaSubSistemas();
+        closeModal();
+    }
+    function confirmDeleteSubSistema() {
+        appData.subSistemas = appData.subSistemas.filter(ss => ss.id !== editingItemId);
+        saveData();
+        renderListaSubSistemas();
+        closeModal();
+    }
+
     function addChecklistItem(container) {
         if (!container) return;
         const newItem = document.createElement('div');
         newItem.className = 'checklist-item';
-        const periodicidadeOptions = ['Semanal', 'Mensal', 'Trimestral', 'Semestral', 'Anual'].map(p => `<option value="${p}" ${p === 'Mensal' ? 'selected' : ''}>${p}</option>`).join('');
+        const periodicidadeOptions = ['Semanal', 'Mensal', 'Bimestral', 'Trimestral', 'Semestral', 'Anual'].map(p => `<option value="${p}" ${p === 'Mensal' ? 'selected' : ''}>${p}</option>`).join('');
         newItem.innerHTML = `<input type="text" class="checklist-item-input" placeholder="Descreva o serviço">
                              <select class="checklist-item-periodicity">${periodicidadeOptions}</select>
                              <button class="btn btn-danger remove-item-btn" data-action="remove-checklist-item" title="Remover item"><i class="fas fa-trash-alt"></i></button>`;
@@ -264,14 +468,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getComponenteFormHTML(componente = {}) {
-        const { nome = '', grandeAreaId = '', sistemaId = '', criticidade = 'Classe B', edificio = '', andar = '', sala = '', complemento = '', dataInicio = '', tarefasEspecificas = [] } = componente;
-        const grandeAreaOptions = MOCK_DATA.grandesAreas.map(ga => `<option value="${ga.id}" ${ga.id === grandeAreaId ? 'selected' : ''}>${ga.nome}</option>`).join('');
+        const { nome = '', grandeAreaId = '', sistemaId = '', subSistemaId = null, criticidade = 'Classe B', edificio = '', andar = '', sala = '', complemento = '', dataInicio = '', servicosEspecificos = [{ servico: '', periodicidade: 'Mensal' }] } = componente;
+        const grandeAreaOptions = appData.grandesAreas.map(ga => `<option value="${ga.id}" ${ga.id === grandeAreaId ? 'selected' : ''}>${ga.nome}</option>`).join('');
         const criticidadeOptions = ['Classe A', 'Classe B', 'Classe C'].map(c => `<option value="${c}" ${c === criticidade ? 'selected' : ''}>${c}</option>`).join('');
-        const tarefasItems = tarefasEspecificas.map((item) => {
+        const servicosItems = servicosEspecificos.map((item) => {
             const selectedPeriodicidade = item.periodicidade || 'Mensal';
-            const optionsWithSelected = ['Semanal', 'Mensal', 'Trimestral', 'Semestral', 'Anual'].map(p => `<option value="${p}" ${p === selectedPeriodicidade ? 'selected' : ''}>${p}</option>`).join('');
+            const optionsWithSelected = ['Semanal', 'Mensal', 'Bimestral', 'Trimestral', 'Semestral', 'Anual'].map(p => `<option value="${p}" ${p === selectedPeriodicidade ? 'selected' : ''}>${p}</option>`).join('');
             return `<div class="checklist-item">
-                        <input type="text" class="checklist-item-input" value="${item.tarefa || ''}" placeholder="Descreva o serviço específico">
+                        <input type="text" class="checklist-item-input" value="${item.servico || ''}" placeholder="Descreva o serviço específico">
                         <select class="checklist-item-periodicity">${optionsWithSelected}</select>
                         <button class="btn btn-danger remove-item-btn" data-action="remove-checklist-item" title="Remover item"><i class="fas fa-trash-alt"></i></button>
                     </div>`;
@@ -284,7 +488,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div class="form-group">
                     <label for="componente-sistema">Sistema (Plano de Manutenção):</label>
-                    <select id="componente-sistema" required disabled><option value="">Selecione uma grande área primeiro</option></select>
+                    <select id="componente-sistema" required disabled><option value="">Selecione uma grande área</option></select>
+                </div>
+                <div class="form-group">
+                    <label for="componente-subsistema">Subsistema (Opcional):</label>
+                    <select id="componente-subsistema" disabled><option value="">Selecione um Sistema</option></select>
+                    <small id="subsistema-helper-text">Selecione um Sistema para ver os Subsistemas disponíveis.</small>
                 </div>
                 <div class="form-group">
                     <label for="componente-name">Nome do Componente (Identificação Única):</label>
@@ -297,22 +506,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 <fieldset class="location-fieldset">
                     <legend>Localização</legend>
                     <div class="form-layout">
-                        <div class="form-group">
-                            <label for="componente-edificio">Edifício:</label>
-                            <input type="text" id="componente-edificio" value="${edificio}">
-                        </div>
-                        <div class="form-group">
-                            <label for="componente-andar">Andar/Piso:</label>
-                            <input type="text" id="componente-andar" value="${andar}">
-                        </div>
-                        <div class="form-group">
-                            <label for="componente-sala">Sala/Ambiente:</label>
-                            <input type="text" id="componente-sala" value="${sala}">
-                        </div>
-                        <div class="form-group">
-                            <label for="componente-complemento">Complemento do Local:</label>
-                            <input type="text" id="componente-complemento" value="${complemento}">
-                        </div>
+                        <div class="form-group"><label for="componente-edificio">Edifício:</label><input type="text" id="componente-edificio" value="${edificio}"></div>
+                        <div class="form-group"><label for="componente-andar">Andar/Piso:</label><input type="text" id="componente-andar" value="${andar}"></div>
+                        <div class="form-group"><label for="componente-sala">Sala/Ambiente:</label><input type="text" id="componente-sala" value="${sala}"></div>
+                        <div class="form-group"><label for="componente-complemento">Complemento do Local:</label><input type="text" id="componente-complemento" value="${complemento}"></div>
                     </div>
                 </fieldset>
                 <div class="form-group">
@@ -323,7 +520,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div id="inherited-info-container" class="inherited-info-container" style="display: none;"></div>
                 <div class="form-group">
                     <label>Serviços Específicos (Opcional):</label>
-                    <div class="checklist-container" id="specific-tasks-container">${tarefasItems}</div>
+                    <div class="checklist-container" id="specific-services-container">${servicosItems}</div>
                     <button type="button" class="btn btn-secondary" data-action="add-checklist-item"><i class="fas fa-plus"></i> Adicionar Serviço Específico</button>
                 </div>
             </form>
@@ -331,7 +528,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function updateSistemaOptions(grandeAreaId, selectedSistemaId = null) {
         const sistemaSelect = document.getElementById('componente-sistema');
-        const filteredSistemas = MOCK_DATA.sistemas.filter(s => s.grandeAreaId === grandeAreaId);
+        const filteredSistemas = appData.sistemas.filter(s => s.grandeAreaId === grandeAreaId);
         if (filteredSistemas.length > 0) {
             sistemaSelect.innerHTML = '<option value="">Selecione...</option>' + filteredSistemas.map(s => `<option value="${s.id}" ${s.id === selectedSistemaId ? 'selected' : ''}>${s.nome}</option>`).join('');
             sistemaSelect.disabled = false;
@@ -339,18 +536,51 @@ document.addEventListener('DOMContentLoaded', () => {
             sistemaSelect.innerHTML = '<option value="">Nenhum sistema encontrado</option>';
             sistemaSelect.disabled = true;
         }
+        updateSubSistemaOptions(null);
     }
-    function updateInheritedInfo(sistemaId) {
-        const infoContainer = document.getElementById('inherited-info-container');
-        const sistema = MOCK_DATA.sistemas.find(s => s.id === sistemaId);
-        if (sistema) {
-            const checklistHtml = sistema.checklist.length > 0 ? `<ul>${sistema.checklist.map(item => `<li>${item.tarefa} (<strong>${item.periodicidade}</strong>)</li>`).join('')}</ul>` : '<p>Nenhum serviço padrão cadastrado.</p>';
-            infoContainer.innerHTML = `<h5>Informações Herdadas do Sistema "${sistema.nome}"</h5><p><strong>Área Responsável:</strong> ${sistema.areaResponsavel}</p><p><strong>Serviços Padrão:</strong></p>${checklistHtml}`;
-            infoContainer.style.display = 'block';
+    function updateSubSistemaOptions(sistemaId, selectedSubSistemaId = null) {
+        const subSistemaSelect = document.getElementById('componente-subsistema');
+        const helperText = document.getElementById('subsistema-helper-text');
+        if (!sistemaId) {
+            subSistemaSelect.innerHTML = '<option value="">Selecione um Sistema</option>';
+            subSistemaSelect.disabled = true;
+            helperText.textContent = 'Selecione um Sistema para ver os Subsistemas disponíveis.';
+            return;
+        }
+        const filteredSubSistemas = appData.subSistemas.filter(ss => ss.sistemaId === sistemaId);
+        if (filteredSubSistemas.length > 0) {
+            subSistemaSelect.innerHTML = '<option value="">Nenhum</option>' + filteredSubSistemas.map(ss => `<option value="${ss.id}" ${ss.id === selectedSubSistemaId ? 'selected' : ''}>${ss.nome}</option>`).join('');
+            subSistemaSelect.disabled = false;
+            helperText.textContent = 'Selecione um Subsistema se este Componente pertencer a um grupo específico.';
         } else {
+            subSistemaSelect.innerHTML = '<option value="">Nenhum Subsistema disponível</option>';
+            subSistemaSelect.disabled = true;
+            helperText.textContent = 'Este Sistema não possui Subsistemas cadastrados.';
+        }
+    }
+    function updateInheritedInfo(sistemaId, subSistemaId) {
+        const infoContainer = document.getElementById('inherited-info-container');
+        const sistema = appData.sistemas.find(s => s.id === sistemaId);
+        const subSistema = subSistemaId ? appData.subSistemas.find(ss => ss.id === subSistemaId) : null;
+
+        if (!sistema) {
             infoContainer.style.display = 'none';
             infoContainer.innerHTML = '';
+            return;
         }
+
+        let inheritedHtml = `<h5>Informações Herdadas</h5>`;
+        if (sistema) {
+            const checklistHtml = sistema.checklist.length > 0 ? `<ul>${sistema.checklist.map(item => `<li>${item.servico} (<strong>${item.periodicidade}</strong>)</li>`).join('')}</ul>` : '<p>Nenhum serviço padrão.</p>';
+            inheritedHtml += `<p><strong>Do Sistema "${sistema.nome}":</strong></p>${checklistHtml}`;
+        }
+        if (subSistema) {
+            const checklistHtml = subSistema.checklist.length > 0 ? `<ul>${subSistema.checklist.map(item => `<li>${item.servico} (<strong>${item.periodicidade}</strong>)</li>`).join('')}</ul>` : '<p>Nenhum serviço padrão.</p>';
+            inheritedHtml += `<p style="margin-top: 15px;"><strong>Do Subsistema "${subSistema.nome}":</strong></p>${checklistHtml}`;
+        }
+        
+        infoContainer.innerHTML = inheritedHtml;
+        infoContainer.style.display = 'block';
     }
     function handleAddComponente() {
         editingItemId = null;
@@ -360,17 +590,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function handleEditComponente(id) {
         editingItemId = id;
-        const componente = MOCK_DATA.componentes.find(c => c.id === id);
+        const componente = appData.componentes.find(c => c.id === id);
         if (!componente) return;
         const formHtml = getComponenteFormHTML(componente);
         const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-componente">Salvar Alterações</button>`;
         showModal('Editar Componente', formHtml, footerHtml);
         updateSistemaOptions(componente.grandeAreaId, componente.sistemaId);
-        updateInheritedInfo(componente.sistemaId);
+        updateSubSistemaOptions(componente.sistemaId, componente.subSistemaId);
+        updateInheritedInfo(componente.sistemaId, componente.subSistemaId);
     }
     function handleDeleteComponente(id) {
         editingItemId = id;
-        const componente = MOCK_DATA.componentes.find(c => c.id === id);
+        const componente = appData.componentes.find(c => c.id === id);
         if (!componente) return;
         const bodyHtml = `<p>Você tem certeza que deseja excluir o componente <strong>"${componente.nome}"</strong> e todo o seu histórico de manutenção?</p>`;
         const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-danger" data-action="confirm-delete-componente">Confirmar Exclusão</button>`;
@@ -379,6 +610,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function saveComponente() {
         const grandeAreaId = parseInt(document.getElementById('componente-grande-area').value);
         const sistemaId = parseInt(document.getElementById('componente-sistema').value);
+        const subSistemaId = parseInt(document.getElementById('componente-subsistema').value) || null;
         const nome = document.getElementById('componente-name').value.trim();
         const criticidade = document.getElementById('componente-criticidade').value;
         const edificio = document.getElementById('componente-edificio').value.trim();
@@ -386,34 +618,36 @@ document.addEventListener('DOMContentLoaded', () => {
         const sala = document.getElementById('componente-sala').value.trim();
         const complemento = document.getElementById('componente-complemento').value.trim();
         const dataInicio = document.getElementById('componente-data-inicio').value;
-        const specificTaskItems = document.querySelectorAll('#specific-tasks-container .checklist-item');
-        const tarefasEspecificas = Array.from(specificTaskItems).map((item, index) => {
-            const tarefa = item.querySelector('.checklist-item-input').value.trim();
+        const specificServiceItems = document.querySelectorAll('#specific-services-container .checklist-item');
+        const servicosEspecificos = Array.from(specificServiceItems).map((item, index) => {
+            const servico = item.querySelector('.checklist-item-input').value.trim();
             const periodicidade = item.querySelector('.checklist-item-periodicity').value;
-            if (!tarefa) return null;
+            if (!servico) return null;
             const idPrefix = editingItemId ? `c${editingItemId}` : 'new';
             const id = `${idPrefix}-t${Date.now() + index}`;
-            return { id, tarefa, periodicidade };
+            return { id, servico, periodicidade };
         }).filter(Boolean);
         if (!grandeAreaId || !sistemaId || !nome || !dataInicio) { alert('Grande Área, Sistema, Nome e Data de Início são obrigatórios.'); return; }
-        const data = { grandeAreaId, sistemaId, nome, criticidade, edificio, andar, sala, complemento, dataInicio, tarefasEspecificas };
+        const data = { grandeAreaId, sistemaId, subSistemaId, nome, criticidade, edificio, andar, sala, complemento, dataInicio, servicosEspecificos };
         if (editingItemId) {
-            const componente = MOCK_DATA.componentes.find(c => c.id === editingItemId);
-            data.tarefasEspecificas.forEach((newTask) => {
-                const existingTask = componente.tarefasEspecificas.find(oldTask => oldTask.tarefa === newTask.tarefa);
-                if (existingTask) newTask.id = existingTask.id;
+            const componente = appData.componentes.find(c => c.id === editingItemId);
+            data.servicosEspecificos.forEach((newService) => {
+                const existingService = componente.servicosEspecificos.find(oldService => oldService.servico === newService.servico);
+                if (existingService) newService.id = existingService.id;
             });
             Object.assign(componente, data);
         } else {
-            const newId = MOCK_DATA.componentes.length > 0 ? Math.max(...MOCK_DATA.componentes.map(c => c.id)) + 1 : 1;
-            MOCK_DATA.componentes.push({ id: newId, ...data });
+            const newId = appData.componentes.length > 0 ? Math.max(...appData.componentes.map(c => c.id)) + 1 : 1;
+            appData.componentes.push({ id: newId, ...data });
         }
+        saveData();
         renderListaComponentes();
         closeModal();
     }
     function confirmDeleteComponente() {
-        MOCK_DATA.componentes = MOCK_DATA.componentes.filter(c => c.id !== editingItemId);
-        MOCK_DATA.historicoManutencoes = MOCK_DATA.historicoManutencoes.filter(h => h.componenteId !== editingItemId);
+        appData.componentes = appData.componentes.filter(c => c.id !== editingItemId);
+        appData.historicoManutencoes = appData.historicoManutencoes.filter(h => h.componenteId !== editingItemId);
+        saveData();
         renderListaComponentes();
         closeModal();
     }
@@ -421,41 +655,79 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- FUNÇÕES DE RENDERIZAÇÃO ---
     const renderers = {
         'screen-painel': renderPainelManutencao,
-        'screen-lista-componentes': renderListaComponentes,
+        'screen-lista-componentes': () => {
+            populateComponentFilters();
+            renderListaComponentes();
+        },
         'screen-lista-grandes-areas': renderListaGrandesAreas,
-        'screen-lista-sistemas': renderListaSistemas,
+        'screen-lista-sistemas': () => {
+            populateSistemasFilters();
+            renderListaSistemas();
+        },
+        'screen-lista-subsistemas': () => {
+            populateSubSistemasFilters();
+            renderListaSubSistemas();
+        },
         'screen-manutencoes': renderMaintenancesScreen,
-        'screen-configuracoes': () => {},
+        'screen-indicadores': renderIndicadoresScreen,
+        'screen-relatorios': () => {},
     };
 
     function renderPainelManutencao() {
-        const allTasks = generateTaskInstances();
+        if (appData.componentes.length === 0) {
+            const painelScreen = document.getElementById('screen-painel');
+            painelScreen.innerHTML = `
+                <div class="card" style="text-align: center; padding: 40px;">
+                    <i class="fas fa-rocket" style="font-size: 3em; color: var(--primary-color); margin-bottom: 20px;"></i>
+                    <h1 class="screen-title">Bem-vindo ao Gestor de Manutenção!</h1>
+                    <p style="font-size: 1.1em; max-width: 600px; margin: 0 auto 25px;">
+                        Parece que você está começando agora. O primeiro passo é organizar seus planos de manutenção.
+                    </p>
+                    <div style="display: flex; justify-content: center; gap: 15px;">
+                        <button class="btn btn-primary" data-action="go-to-grandes-areas">
+                            <i class="fas fa-tags"></i> Comece cadastrando uma Grande Área
+                        </button>
+                        <button class="btn btn-secondary" data-action="go-to-sistemas">
+                            <i class="fas fa-tag"></i> Ou crie seu primeiro Sistema
+                        </button>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        const allServices = getAllMaintenanceServicesForDisplay();
         const painelTitle = document.getElementById('painel-main-title');
         const clearFilterBtn = document.getElementById('clear-filter-btn');
     
-        const inicioMes = new Date(today.getFullYear(), today.getMonth(), 1);
-        const fimMes = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-        fimMes.setHours(23, 59, 59, 999);
+        const inicioMesCorrente = new Date(today.getFullYear(), today.getMonth(), 1);
+        const fimMesCorrente = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        fimMesCorrente.setHours(23, 59, 59, 999);
     
         const inicioProximoMes = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-        const fimProximoMes = new Date(today.getFullYear(), today.getMonth() + 2, 0);
-        fimProximoMes.setHours(23, 59, 59, 999);
     
         if (activeDateFilter) {
             const dataFormatada = new Date(activeDateFilter + 'T12:00:00').toLocaleDateString('pt-BR');
             painelTitle.textContent = `Serviços para ${dataFormatada}`;
             clearFilterBtn.style.display = 'block';
     
-            const tasksOnDay = allTasks.filter(t => t.date.toISOString().slice(0, 10) === activeDateFilter);
+            const servicesOnDay = allServices.filter(s => s.date.toISOString().slice(0, 10) === activeDateFilter);
     
-            const criticasDoDia = tasksOnDay.filter(t => t.status === 'Atrasada');
-            const mesDoDia = tasksOnDay.filter(t => t.status === 'A vencer' && t.date >= inicioMes && t.date <= fimMes);
-            const proximoMesDoDia = tasksOnDay.filter(t => t.status === 'A vencer' && t.date >= inicioProximoMes && t.date <= fimProximoMes);
+            const criticasDoDia = servicesOnDay.filter(s => s.status === 'Atrasada');
+            const pendentesDoDia = servicesOnDay.filter(s => s.status === 'Pendente');
+            const mesDoDia = servicesOnDay.filter(s => s.status === 'A vencer' && s.date >= inicioMesCorrente && s.date <= fimMesCorrente);
+            const proximoMesDoDia = servicesOnDay.filter(s => s.status === 'A vencer' && s.date >= inicioProximoMes);
     
-            renderTaskListToPanel(document.querySelector('#alertas-criticas .lista-os'), criticasDoDia, 'status-critica');
-            renderTaskListToPanel(document.querySelector('#alertas-mes .lista-os'), mesDoDia, 'status-mes');
-            renderTaskListToPanel(document.querySelector('#alertas-proximo-mes .lista-os'), proximoMesDoDia, 'status-proximo-mes');
+            renderServiceListToPanel(document.querySelector('#alertas-criticas .lista-os'), criticasDoDia, 'status-critica');
+            renderServiceListToPanel(document.querySelector('#alertas-pendentes .lista-os'), pendentesDoDia, 'status-pendente-painel');
+            renderServiceListToPanel(document.querySelector('#alertas-mes .lista-os'), mesDoDia, 'status-mes');
+            renderServiceListToPanel(document.querySelector('#alertas-proximo-mes .lista-os'), proximoMesDoDia, 'status-proximo-mes');
             
+            if (criticasDoDia.length > 0) document.getElementById('alertas-criticas').classList.add('open');
+            if (pendentesDoDia.length > 0) document.getElementById('alertas-pendentes').classList.add('open');
+            if (mesDoDia.length > 0) document.getElementById('alertas-mes').classList.add('open');
+            if (proximoMesDoDia.length > 0) document.getElementById('alertas-proximo-mes').classList.add('open');
+
             renderCalendar();
             return;
         }
@@ -463,86 +735,113 @@ document.addEventListener('DOMContentLoaded', () => {
         painelTitle.textContent = 'Painel de Serviços';
         clearFilterBtn.style.display = 'none';
     
-        const criticas = allTasks.filter(t => t.status === 'Atrasada');
-        const mes = allTasks.filter(t => t.status === 'A vencer' && t.date >= inicioMes && t.date <= fimMes);
-        const proximoMes = allTasks.filter(t => t.status === 'A vencer' && t.date >= inicioProximoMes && t.date <= fimProximoMes);
+        const criticas = allServices.filter(s => s.status === 'Atrasada');
+        const pendentes = allServices.filter(s => s.status === 'Pendente');
+        const mes = allServices.filter(s => s.status === 'A vencer' && s.date >= inicioMesCorrente && s.date <= fimMesCorrente);
+        const proximosMeses = allServices.filter(s => s.status === 'A vencer' && s.date >= inicioProximoMes);
     
-        renderTaskListToPanel(document.querySelector('#alertas-criticas .lista-os'), criticas, 'status-critica');
-        renderTaskListToPanel(document.querySelector('#alertas-mes .lista-os'), mes, 'status-mes');
-        renderTaskListToPanel(document.querySelector('#alertas-proximo-mes .lista-os'), proximoMes, 'status-proximo-mes');
+        renderServiceListToPanel(document.querySelector('#alertas-criticas .lista-os'), criticas, 'status-critica');
+        renderServiceListToPanel(document.querySelector('#alertas-pendentes .lista-os'), pendentes, 'status-pendente-painel');
+        renderServiceListToPanel(document.querySelector('#alertas-mes .lista-os'), mes, 'status-mes');
+        renderServiceListToPanel(document.querySelector('#alertas-proximo-mes .lista-os'), proximosMeses, 'status-proximo-mes');
         renderCalendar();
-
-        // Garante que a seção "Vencendo Este Mês" comece aberta por padrão
+        
         document.getElementById('alertas-mes').classList.add('open');
     }
 
-    function renderTaskListToPanel(ulElement, taskList, cssClass) {
+    function renderServiceListToPanel(ulElement, serviceList, cssClass) {
+        if (!ulElement) return;
         ulElement.innerHTML = '';
-        if (taskList.length === 0) {
+        if (serviceList.length === 0) {
             ulElement.innerHTML = '<li>Nenhum serviço encontrado.</li>';
             return;
         }
-        const groupedByComponent = taskList.reduce((acc, task) => {
-            if (!acc[task.componenteId]) {
-                acc[task.componenteId] = { name: task.componenteName, tasks: [] };
+        const groupedByComponent = serviceList.reduce((acc, service) => {
+            if (!acc[service.componenteId]) {
+                acc[service.componenteId] = { name: service.componenteName, services: [] };
             }
-            acc[task.componenteId].tasks.push(task);
+            acc[service.componenteId].services.push(service);
             return acc;
         }, {});
-        Object.values(groupedByComponent).forEach(group => {
-            group.tasks.sort((a, b) => a.date - b.date);
+
+        const componentKeys = Object.keys(groupedByComponent);
+        const limitedKeys = componentKeys.slice(0, 8);
+
+        limitedKeys.forEach(key => {
+            const group = groupedByComponent[key];
+            group.services.sort((a, b) => a.date - b.date);
             const groupLi = document.createElement('li');
-            groupLi.className = `task-group ${cssClass}`;
+            groupLi.className = `service-group ${cssClass}`;
             const header = document.createElement('div');
-            header.className = 'task-group-header';
-            header.dataset.action = 'toggle-task-group';
+            header.className = 'service-group-header';
+            header.dataset.action = 'toggle-service-group';
             header.innerHTML = `<span class="component-name">${group.name}</span>
-                                <span class="task-count">${group.tasks.length} serviço(s)</span>
+                                <span class="service-count">${group.services.length} serviço(s)</span>
                                 <i class="fas fa-chevron-down expand-icon"></i>`;
             const sublist = document.createElement('ul');
-            sublist.className = 'task-sublist';
-            group.tasks.forEach(t => {
-                const taskLi = document.createElement('li');
-                taskLi.className = 'task-item';
-                taskLi.dataset.action = 'complete-task';
-                taskLi.dataset.componenteId = t.componenteId;
-                taskLi.dataset.tarefaId = t.tarefaId;
-                taskLi.innerHTML = `<small>${t.tarefaDescricao}</small><br><small>Vence em: ${t.date.toLocaleDateString('pt-BR')}</small>`;
-                sublist.appendChild(taskLi);
+            sublist.className = 'service-sublist';
+            group.services.forEach(s => {
+                const serviceLi = document.createElement('li');
+                serviceLi.className = 'service-item';
+                serviceLi.dataset.action = 'complete-service';
+                serviceLi.dataset.componenteId = s.componenteId;
+                serviceLi.dataset.servicoId = s.servicoId;
+                const dateText = s.status === 'Pendente' ? `Pendente desde: ${s.date.toLocaleDateString('pt-BR')}` : `Vence em: ${s.date.toLocaleDateString('pt-BR')}`;
+                serviceLi.innerHTML = `<small>${s.servicoDescricao}</small><span class="due-date">${dateText}</span>`;
+                sublist.appendChild(serviceLi);
             });
             groupLi.appendChild(header);
             groupLi.appendChild(sublist);
             ulElement.appendChild(groupLi);
         });
+
+        if (componentKeys.length > 8) {
+            const remainingCount = componentKeys.length - 8;
+            const viewAllLi = document.createElement('li');
+            const filterType = cssClass.includes('critica') ? 'vencidos' : (cssClass.includes('mes') ? 'este-mes' : (cssClass.includes('pendente') ? 'pendentes' : 'proximo-mes'));
+            viewAllLi.innerHTML = `<button class="btn view-all-button" data-action="view-all-services" data-filter="${filterType}">Ver os outros ${remainingCount} componentes...</button>`;
+            ulElement.appendChild(viewAllLi);
+        }
     }
     
     function renderListaGrandesAreas() {
         const tbody = document.querySelector('#screen-lista-grandes-areas tbody');
         tbody.innerHTML = '';
-        MOCK_DATA.grandesAreas.forEach(ga => {
+        appData.grandesAreas.forEach(ga => {
             const tr = document.createElement('tr');
             tr.innerHTML = `<td>${ga.nome}</td><td class="actions"><a href="#" title="Editar" data-action="edit-grande-area" data-id="${ga.id}"><i class="fas fa-pencil-alt"></i></a><a href="#" title="Excluir" data-action="delete-grande-area" data-id="${ga.id}"><i class="fas fa-trash-alt"></i></a></td>`;
             tbody.appendChild(tr);
         });
     }
     
-    function renderListaSistemas() {
+    function renderListaSistemas(sistemas = appData.sistemas) {
         const tbody = document.querySelector('#screen-lista-sistemas tbody');
         tbody.innerHTML = '';
-        MOCK_DATA.sistemas.forEach(sis => {
-            const grandeAreaPai = MOCK_DATA.grandesAreas.find(g => g.id === sis.grandeAreaId);
+        sistemas.forEach(sis => {
+            const grandeAreaPai = appData.grandesAreas.find(g => g.id === sis.grandeAreaId);
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td>${sis.nome}</td><td>${grandeAreaPai ? grandeAreaPai.nome : 'N/A'}</td><td>${sis.areaResponsavel || 'N/A'}</td><td class="actions"><a href="#" title="Editar" data-action="edit-sistema" data-id="${sis.id}"><i class="fas fa-pencil-alt"></i></a><a href="#" title="Excluir" data-action="delete-sistema" data-id="${sis.id}"><i class="fas fa-trash-alt"></i></a></td>`;
+            tr.innerHTML = `<td>${sis.nome}</td><td>${grandeAreaPai ? grandeAreaPai.nome : 'N/A'}</td><td>${sis.areaResponsavel || 'N/A'}</td><td>${sis.pessoaResponsavel || 'N/A'}</td><td class="actions"><a href="#" title="Editar" data-action="edit-sistema" data-id="${sis.id}"><i class="fas fa-pencil-alt"></i></a><a href="#" title="Excluir" data-action="delete-sistema" data-id="${sis.id}"><i class="fas fa-trash-alt"></i></a></td>`;
             tbody.appendChild(tr);
         });
     }
 
-    function renderListaComponentes() {
+    function renderListaSubSistemas(subSistemas = appData.subSistemas) {
+        const tbody = document.querySelector('#screen-lista-subsistemas tbody');
+        tbody.innerHTML = '';
+        subSistemas.forEach(sub => {
+            const sistemaPai = appData.sistemas.find(s => s.id === sub.sistemaId);
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${sub.nome}</td><td>${sistemaPai ? sistemaPai.nome : 'N/A'}</td><td class="actions"><a href="#" title="Editar" data-action="edit-subsistema" data-id="${sub.id}"><i class="fas fa-pencil-alt"></i></a><a href="#" title="Excluir" data-action="delete-subsistema" data-id="${sub.id}"><i class="fas fa-trash-alt"></i></a></td>`;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function renderListaComponentes(componentes = appData.componentes) {
         const tbody = document.querySelector('#screen-lista-componentes tbody');
         tbody.innerHTML = '';
-        MOCK_DATA.componentes.forEach(comp => {
-            const grandeArea = MOCK_DATA.grandesAreas.find(g => g.id === comp.grandeAreaId);
-            const sistema = MOCK_DATA.sistemas.find(s => s.id === comp.sistemaId);
+        componentes.forEach(comp => {
+            const grandeArea = appData.grandesAreas.find(g => g.id === comp.grandeAreaId);
+            const sistema = appData.sistemas.find(s => s.id === comp.sistemaId);
             const tr = document.createElement('tr');
             tr.innerHTML = `<td>${comp.nome}</td><td>${grandeArea ? grandeArea.nome : 'N/A'}</td><td>${sistema ? sistema.nome : 'N/A'}</td><td>${comp.criticidade}</td><td class="actions"><a href="#" title="Editar" data-action="edit-componente" data-id="${comp.id}"><i class="fas fa-pencil-alt"></i></a><a href="#" title="Excluir" data-action="delete-componente" data-id="${comp.id}"><i class="fas fa-trash-alt"></i></a></td>`;
             tbody.appendChild(tr);
@@ -551,6 +850,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderCalendar() {
         const calendarContainer = document.getElementById('painel-calendario');
+        if (!calendarContainer) return;
         calendarContainer.innerHTML = '';
         const month = calendarDate.getMonth();
         const year = calendarDate.getFullYear();
@@ -576,42 +876,44 @@ document.addEventListener('DOMContentLoaded', () => {
             grid.appendChild(dayCell);
         }
         calendarContainer.appendChild(grid);
-        populateCalendarWithTasks();
+        populateCalendarWithServices();
         document.getElementById('prev-month').addEventListener('click', () => { calendarDate.setMonth(calendarDate.getMonth() - 1); renderPainelManutencao(); });
         document.getElementById('next-month').addEventListener('click', () => { calendarDate.setMonth(calendarDate.getMonth() + 1); renderPainelManutencao(); });
     }
 
-    function populateCalendarWithTasks() {
-        const tasks = generateTaskInstances();
-        tasks.forEach(t => {
-            const dateStr = t.date.toISOString().slice(0, 10);
+    function populateCalendarWithServices() {
+        const services = getAllMaintenanceServicesForDisplay().filter(s => s.status !== 'Concluído');
+        services.forEach(s => {
+            const dateStr = s.date.toISOString().slice(0, 10);
             const dayCell = document.querySelector(`.calendar-day[data-date="${dateStr}"]`);
-            if (dayCell && !dayCell.querySelector('.task-dot')) {
-                dayCell.classList.add('has-tasks');
-                dayCell.insertAdjacentHTML('beforeend', '<div class="task-dot"></div>');
+            if (dayCell && !dayCell.querySelector('.service-dot')) {
+                dayCell.classList.add('has-services');
+                dayCell.insertAdjacentHTML('beforeend', '<div class="service-dot"></div>');
             }
         });
     }
     
     function applyFiltersAndRenderTable() {
-        let tasks = getAllMaintenanceTasksForDisplay();
+        let services = getAllMaintenanceServicesForDisplay();
         const filters = {
             grandeAreaId: parseInt(document.getElementById('filter-grande-area').value),
             sistemaId: parseInt(document.getElementById('filter-sistema').value),
+            subSistemaId: parseInt(document.getElementById('filter-subsistema').value),
             componenteId: parseInt(document.getElementById('filter-componente').value),
             status: document.getElementById('filter-status').value,
             startDate: document.getElementById('filter-data-inicio').value,
             endDate: document.getElementById('filter-data-fim').value,
         };
     
-        if (filters.grandeAreaId) tasks = tasks.filter(t => t.grandeAreaId === filters.grandeAreaId);
-        if (filters.sistemaId) tasks = tasks.filter(t => t.sistemaId === filters.sistemaId);
-        if (filters.componenteId) tasks = tasks.filter(t => t.componenteId === filters.componenteId);
-        if (filters.status) tasks = tasks.filter(t => t.status === filters.status);
-        if (filters.startDate) tasks = tasks.filter(t => t.date >= new Date(filters.startDate + 'T00:00:00'));
-        if (filters.endDate) tasks = tasks.filter(t => t.date <= new Date(filters.endDate + 'T23:59:59'));
+        if (filters.grandeAreaId) services = services.filter(s => s.grandeAreaId === filters.grandeAreaId);
+        if (filters.sistemaId) services = services.filter(s => s.sistemaId === filters.sistemaId);
+        if (filters.subSistemaId) services = services.filter(s => s.subSistemaId === filters.subSistemaId);
+        if (filters.componenteId) services = services.filter(s => s.componenteId === filters.componenteId);
+        if (filters.status) services = services.filter(s => s.status === filters.status);
+        if (filters.startDate) services = services.filter(s => s.date >= new Date(filters.startDate + 'T00:00:00'));
+        if (filters.endDate) services = services.filter(s => s.date <= new Date(filters.endDate + 'T23:59:59'));
     
-        tasks.sort((a, b) => {
+        services.sort((a, b) => {
             const valA = a[sortColumn];
             const valB = b[sortColumn];
             let comparison = 0;
@@ -623,29 +925,65 @@ document.addEventListener('DOMContentLoaded', () => {
             return sortDirection === 'desc' ? comparison * -1 : comparison;
         });
 
+        const totalItems = services.length;
+        const startIndex = (maintenanceCurrentPage - 1) * maintenanceItemsPerPage;
+        const endIndex = startIndex + maintenanceItemsPerPage;
+        const paginatedServices = services.slice(startIndex, endIndex);
+
         const tbody = document.getElementById('maintenance-table-body');
         tbody.innerHTML = '';
-        tasks.forEach(t => {
-            const statusClass = t.status === 'A vencer' ? 'pendente' : t.status.toLowerCase().replace('í', 'i');
+        paginatedServices.forEach(s => {
+            const statusClass = s.status.toLowerCase().replace('í', 'i').replace(' ', '-');
             const tr = document.createElement('tr');
-            const dateText = t.status === 'Concluída' ? `Realizada em: ${t.date.toLocaleDateString('pt-BR')}` : t.date.toLocaleDateString('pt-BR');
-            let actionButton;
-            if (t.status === 'Concluída') {
-                actionButton = `<button class="btn btn-secondary" data-action="revert-task" data-history-id="${t.historyId}"><i class="fas fa-undo"></i> Reverter</button>`;
-            } else {
-                actionButton = `<button class="btn btn-primary" data-action="complete-task" data-componente-id="${t.componenteId}" data-tarefa-id="${t.tarefaId}"><i class="fas fa-check"></i> Concluir</button>`;
+            tr.dataset.action = 'view-service-details';
+            tr.dataset.componenteId = s.componenteId;
+            tr.dataset.servicoId = s.servicoId;
+            if (s.historyId) tr.dataset.historyId = s.historyId;
+
+            let dateText, actionButton;
+            switch (s.status) {
+                case 'Concluído':
+                    dateText = `Realizada em: ${s.date.toLocaleDateString('pt-BR')}`;
+                    actionButton = `<button class="btn btn-secondary" data-action="revert-service" data-history-id="${s.historyId}"><i class="fas fa-undo"></i> Reverter</button>`;
+                    break;
+                case 'Pendente':
+                    dateText = `Pendente desde: ${s.date.toLocaleDateString('pt-BR')}`;
+                    actionButton = `<button class="btn btn-warning" data-action="complete-service" data-componente-id="${s.componenteId}" data-servico-id="${s.servicoId}"><i class="fas fa-check-circle"></i> Finalizar</button>`;
+                    break;
+                default:
+                    dateText = s.date.toLocaleDateString('pt-BR');
+                    actionButton = `<button class="btn btn-primary" data-action="complete-service" data-componente-id="${s.componenteId}" data-servico-id="${s.servicoId}"><i class="fas fa-check"></i> Concluir</button>`;
             }
             tr.innerHTML = `
-                <td>${t.componenteName}</td>
-                <td>${t.tarefaDescricao}</td>
-                <td>${t.criticidade}</td>
+                <td>${s.componenteName}</td>
+                <td>${s.servicoDescricao}</td>
+                <td>${s.criticidade}</td>
                 <td>${dateText}</td>
-                <td><span class="status-badge ${statusClass}">${t.status}</span></td>
+                <td><span class="status-badge ${statusClass}">${s.status}</span></td>
                 <td class="actions">${actionButton}</td>
             `;
             tbody.appendChild(tr);
         });
         updateSortIcons();
+        renderPaginationControls(totalItems);
+    }
+
+    function renderPaginationControls(totalItems) {
+        const controlsContainers = document.querySelectorAll('.pagination-controls');
+        const totalPages = Math.ceil(totalItems / maintenanceItemsPerPage);
+
+        if (totalPages <= 1) {
+            controlsContainers.forEach(container => container.innerHTML = '');
+            return;
+        }
+
+        let buttonsHtml = '';
+        buttonsHtml += `<button class="page-btn" data-action="go-to-page" data-page="${maintenanceCurrentPage - 1}" ${maintenanceCurrentPage === 1 ? 'disabled' : ''}>Anterior</button>`;
+        for (let i = 1; i <= totalPages; i++) {
+            buttonsHtml += `<button class="page-btn ${i === maintenanceCurrentPage ? 'active' : ''}" data-action="go-to-page" data-page="${i}">${i}</button>`;
+        }
+        buttonsHtml += `<button class="page-btn" data-action="go-to-page" data-page="${maintenanceCurrentPage + 1}" ${maintenanceCurrentPage === totalPages ? 'disabled' : ''}>Próximo</button>`;
+        controlsContainers.forEach(container => { container.innerHTML = buttonsHtml; });
     }
     
     function renderMaintenancesScreen() {
@@ -655,11 +993,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function populateMaintenanceFilters() {
         const gaSelect = document.getElementById('filter-grande-area');
-        gaSelect.innerHTML = '<option value="">Todas</option>' + MOCK_DATA.grandesAreas.map(g => `<option value="${g.id}">${g.nome}</option>`).join('');
+        gaSelect.innerHTML = '<option value="">Todas</option>' + appData.grandesAreas.map(g => `<option value="${g.id}">${g.nome}</option>`).join('');
         document.getElementById('filter-sistema').innerHTML = '<option value="">Todos</option>';
         document.getElementById('filter-sistema').disabled = true;
+        document.getElementById('filter-subsistema').innerHTML = '<option value="">Todos</option>';
+        document.getElementById('filter-subsistema').disabled = true;
         document.getElementById('filter-componente').innerHTML = '<option value="">Todos</option>';
         document.getElementById('filter-componente').disabled = true;
+    }
+
+    function populateComponentFilters() {
+        const gaSelect = document.getElementById('filter-comp-grande-area');
+        gaSelect.innerHTML = '<option value="">Todas</option>' + appData.grandesAreas.map(g => `<option value="${g.id}">${g.nome}</option>`).join('');
+        document.getElementById('filter-comp-sistema').innerHTML = '<option value="">Todos</option>';
+        document.getElementById('filter-comp-sistema').disabled = true;
+        document.getElementById('filter-comp-subsistema').innerHTML = '<option value="">Todos</option>';
+        document.getElementById('filter-comp-subsistema').disabled = true;
+    }
+
+    function populateSistemasFilters() {
+        const gaSelect = document.getElementById('filter-sis-grande-area');
+        gaSelect.innerHTML = '<option value="">Todas</option>' + appData.grandesAreas.map(g => `<option value="${g.id}">${g.nome}</option>`).join('');
+    }
+
+    function populateSubSistemasFilters() {
+        const gaSelect = document.getElementById('filter-subsis-grande-area');
+        gaSelect.innerHTML = '<option value="">Todas</option>' + appData.grandesAreas.map(g => `<option value="${g.id}">${g.nome}</option>`).join('');
+        document.getElementById('filter-subsis-sistema').innerHTML = '<option value="">Todos</option>';
+        document.getElementById('filter-subsis-sistema').disabled = true;
     }
 
     function updateSortIcons() {
@@ -671,77 +1032,269 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function handleCompleteTask(componenteId, tarefaId) {
-        editingItemId = { componenteId, tarefaId };
-        const componente = MOCK_DATA.componentes.find(c => c.id === componenteId);
-        const sistema = MOCK_DATA.sistemas.find(s => s.id === componente.sistemaId);
-        let tarefa = sistema.checklist.find(t => t.id === tarefaId);
-        if (!tarefa) {
-            tarefa = componente.tarefasEspecificas.find(t => t.id === tarefaId);
+    function showStatusChoiceModal() {
+        const { componenteId, servicoId } = editingItemId;
+        const bodyHtml = `
+            <p>Como você deseja atualizar o status deste serviço?</p>
+            <div class="form-actions" style="justify-content: center; gap: 20px;">
+                <button class="btn btn-primary" data-action="choose-completed" data-componente-id="${componenteId}" data-servico-id="${servicoId}">
+                    <i class="fas fa-check-circle"></i> Concluído
+                </button>
+                <button class="btn btn-secondary" data-action="choose-pending" data-componente-id="${componenteId}" data-servico-id="${servicoId}">
+                    <i class="fas fa-pause-circle"></i> Pendente
+                </button>
+            </div>`;
+        showModal('Atualizar Status do Serviço', bodyHtml, '');
+    }
+
+    function handleCompleteService(componenteId, servicoId) {
+        componenteId = parseInt(componenteId);
+        const allServices = getAllMaintenanceServicesForDisplay();
+        
+        const service = allServices.find(s => s.componenteId === componenteId && s.servicoId === servicoId && s.status !== 'Concluído');
+
+        if (!service) {
+            console.error("Serviço ativo não encontrado para iniciar a ação.", {componenteId, servicoId});
+            alert("Erro: Serviço ativo não encontrado. Ele pode já ter sido concluído.");
+            return;
         }
-        if (!componente || !tarefa) return;
+
+        const osNumero = service.osNumero;
+
+        editingItemId = { componenteId, servicoId, osNumero };
+        showStatusChoiceModal();
+    }
+
+    function showCompletionForm() {
+        const { componenteId, servicoId, osNumero } = editingItemId;
+        const allServices = getAllMaintenanceServicesForDisplay();
+        const service = allServices.find(s => s.componenteId === componenteId && s.servicoId === servicoId && s.status !== 'Concluído');
+        
         const todayStr = today.toISOString().slice(0, 10);
         const bodyHtml = `
-            <form id="complete-task-form">
-                <p><strong>Componente:</strong> ${componente.nome}</p>
-                <p><strong>Serviço:</strong> ${tarefa.tarefa}</p>
+            <form id="complete-service-form">
+                <p><strong>Componente:</strong> ${service.componenteName}</p>
+                <p><strong>Serviço:</strong> ${service.servicoDescricao}</p>
+                <p><strong>Nº da Ordem de Serviço (OS):</strong> ${osNumero}</p>
                 <div class="form-group">
                     <label for="completion-date">Data de Realização:</label>
                     <input type="date" id="completion-date" value="${todayStr}" required>
                 </div>
                 <div class="form-group">
-                    <label for="completion-os">Nº da Ordem de Serviço (OS):</label>
-                    <input type="text" id="completion-os" placeholder="Referência da OS externa">
-                </div>
-                <div class="form-group">
                     <label for="completion-obs">Observações:</label>
                     <textarea id="completion-obs" rows="3"></textarea>
                 </div>
-            </form>
-        `;
+            </form>`;
         const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-completion">Salvar Conclusão</button>`;
         showModal('Concluir Serviço de Manutenção', bodyHtml, footerHtml);
     }
+    
+    function showPendingForm() {
+        const { componenteId, servicoId, osNumero } = editingItemId;
+        const service = getAllMaintenanceServicesForDisplay().find(s => s.componenteId === componenteId && s.servicoId === servicoId && s.status !== 'Concluído');
+
+        const todayStr = today.toISOString().slice(0, 10);
+        const bodyHtml = `
+            <form id="pending-service-form">
+                 <p><strong>Componente:</strong> ${service.componenteName}</p>
+                 <p><strong>Serviço:</strong> ${service.servicoDescricao}</p>
+                 <p><strong>Nº da Ordem de Serviço (OS):</strong> ${osNumero}</p>
+                <div class="form-group">
+                    <label for="pending-date">Data da Pendência:</label>
+                    <input type="date" id="pending-date" value="${todayStr}" required>
+                </div>
+                <div class="form-group">
+                    <label for="pending-reason">Motivo da Pendência:</label>
+                    <select id="pending-reason" required>
+                        <option value="">Selecione...</option>
+                        <option value="Material insuficiente">Material insuficiente</option>
+                        <option value="Falta de autorização">Falta de autorização</option>
+                        <option value="Pessoal insuficiente">Pessoal insuficiente</option>
+                        <option value="Outros">Outros</option>
+                    </select>
+                </div>
+                <div class="form-group hidden" id="other-reason-group">
+                    <label for="pending-reason-other">Especifique o motivo:</label>
+                    <input type="text" id="pending-reason-other" placeholder="Ex: Aguardando peça importada">
+                </div>
+                <div class="form-group">
+                    <label for="pending-details">Detalhes da Pendência (Opcional):</label>
+                    <textarea id="pending-details" rows="3" placeholder="Adicione mais informações, se necessário..."></textarea>
+                </div>
+            </form>`;
+        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="save-pending-status">Salvar Pendência</button>`;
+        showModal('Registrar Pendência', bodyHtml, footerHtml);
+    }
 
     function saveCompletion() {
-        const { componenteId, tarefaId } = editingItemId;
+        const { componenteId, servicoId, osNumero } = editingItemId;
         const completionDate = document.getElementById('completion-date').value;
-        const completionOs = document.getElementById('completion-os').value.trim();
         const completionObs = document.getElementById('completion-obs').value.trim();
-        if (!completionDate) { alert('A data de realização é obrigatória.'); return; }
-        const newHistoryId = MOCK_DATA.historicoManutencoes.length > 0 ? Math.max(...MOCK_DATA.historicoManutencoes.map(h => h.id)) + 1 : 1;
-        MOCK_DATA.historicoManutencoes.push({
-            id: newHistoryId,
-            componenteId: componenteId,
-            tarefaId: tarefaId,
-            data: completionDate,
-            os: completionOs,
+        
+        if (!completionDate) { 
+            alert('A data de realização é obrigatória.'); 
+            return; 
+        }
+
+        const newHistoryId = appData.historicoManutencoes.length > 0 ? Math.max(...appData.historicoManutencoes.map(h => h.id)) + 1 : 1;
+        appData.historicoManutencoes.push({
+            id: newHistoryId, componenteId: componenteId, servicoId: servicoId,
+            data: completionDate, status: 'Concluído', os: osNumero,
             obs: completionObs || 'Serviço concluído.'
         });
+        saveData();
         closeModal();
         if (renderers[activeScreen]) renderers[activeScreen]();
     }
 
-    function handleRevertTask(historyId) {
+    function savePendingStatus() {
+        const { componenteId, servicoId, osNumero } = editingItemId;
+        const pendingDate = document.getElementById('pending-date').value;
+        const reasonCategory = document.getElementById('pending-reason').value;
+        const otherReasonInput = document.getElementById('pending-reason-other').value.trim();
+        const detailsText = document.getElementById('pending-details').value.trim();
+
+        if (!pendingDate || !reasonCategory) {
+            alert('A data e o motivo da pendência são obrigatórios.');
+            return;
+        }
+
+        let finalMotivo = reasonCategory;
+        if (reasonCategory === 'Outros') {
+            if (!otherReasonInput) {
+                alert('Por favor, especifique o motivo no campo correspondente.');
+                document.getElementById('pending-reason-other').focus();
+                return;
+            }
+            finalMotivo = otherReasonInput;
+        }
+
+        const newHistoryId = appData.historicoManutencoes.length > 0 ? Math.max(...appData.historicoManutencoes.map(h => h.id)) + 1 : 1;
+        appData.historicoManutencoes.push({
+            id: newHistoryId, componenteId: componenteId, servicoId: servicoId,
+            data: pendingDate, status: 'Pendente', os: osNumero, 
+            motivo: finalMotivo, motivoDetalhado: detailsText
+        });
+        
+        saveData();
+        closeModal();
+        if (renderers[activeScreen]) renderers[activeScreen]();
+    }
+
+    function handleRevertService(historyId) {
         editingItemId = historyId;
-        const historyEntry = MOCK_DATA.historicoManutencoes.find(h => h.id === historyId);
+        const historyEntry = appData.historicoManutencoes.find(h => h.id === historyId);
         if (!historyEntry) return;
         const bodyHtml = `<p>Você tem certeza que deseja reverter esta conclusão? O registro será removido e o serviço voltará a ser agendado com base na execução anterior.</p>`;
-        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-danger" data-action="confirm-revert-task">Confirmar Reversão</button>`;
+        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-danger" data-action="confirm-revert-service">Confirmar Reversão</button>`;
         showModal('Reverter Conclusão de Serviço', bodyHtml, footerHtml);
     }
 
-    function confirmRevertTask() {
-        MOCK_DATA.historicoManutencoes = MOCK_DATA.historicoManutencoes.filter(h => h.id !== editingItemId);
+    function confirmRevertService() {
+        appData.historicoManutencoes = appData.historicoManutencoes.filter(h => h.id !== editingItemId);
+        saveData();
         closeModal();
         if (renderers[activeScreen]) renderers[activeScreen]();
     }
 
-    function handleShowReportModal() {
+    function handleViewServiceDetails(componenteId, servicoId, historyId) {
+        const allServices = getAllMaintenanceServicesForDisplay();
+        let service;
+        if (historyId) {
+            service = allServices.find(s => s.historyId === parseInt(historyId));
+        } else {
+            service = allServices.find(s => 
+                s.componenteId === parseInt(componenteId) && 
+                s.servicoId === servicoId && 
+                s.status !== 'Concluído'
+            );
+        }
+
+        if (!service) {
+            alert('Detalhes do serviço não encontrados.'); 
+            return;
+        }
+
+        const componente = appData.componentes.find(c => c.id === service.componenteId);
+        const sistema = appData.sistemas.find(s => s.id === componente.sistemaId);
+        const grandeArea = appData.grandesAreas.find(g => g.id === componente.grandeAreaId);
+        const location = [componente.edificio, componente.andar, componente.sala, componente.complemento].filter(Boolean).join(', ');
+
+        let assetInfoHtml = `
+            <fieldset class="location-fieldset details-section">
+                <legend>Informações do Ativo</legend>
+                <dl class="details-list">
+                    <dt>Componente:</dt><dd>${componente.nome}</dd>
+                    <dt>Sistema:</dt><dd>${sistema.nome}</dd>
+                    <dt>Grande Área:</dt><dd>${grandeArea.nome}</dd>
+                    <dt>Localização:</dt><dd>${location || 'Não informada'}</dd>
+                    <dt>Criticidade:</dt><dd>${componente.criticidade}</dd>
+                </dl>
+            </fieldset>
+        `;
+
+        let statusInfoHtml = '<fieldset class="location-fieldset details-section">';
+        
+        switch(service.status) {
+            case 'Concluído':
+                statusInfoHtml += `
+                    <legend>Registro da Última Execução</legend>
+                    <dl class="details-list">
+                        <dt>Serviço:</dt><dd>${service.servicoDescricao}</dd>
+                        <dt>Status:</dt><dd><span class="status-badge concluida">${service.status}</span></dd>
+                        <dt>Data de Realização:</dt><dd>${service.date.toLocaleDateString('pt-BR')}</dd>
+                        <dt>Nº da OS:</dt><dd>${service.osNumero || 'Não informado'}</dd>
+                        <div class="full-width"><dt>Detalhes da Conclusão:</dt><dd><pre>${service.obs || 'Nenhuma observação.'}</pre></dd></div>
+                    </dl>`;
+                break;
+            
+            case 'Pendente':
+                statusInfoHtml += `
+                    <legend>Registro da Última Execução</legend>
+                    <dl class="details-list">
+                        <dt>Serviço:</dt><dd>${service.servicoDescricao}</dd>
+                        <dt>Status:</dt><dd><span class="status-badge pendente">${service.status}</span></dd>
+                        <dt>Data da Pendência:</dt><dd>${service.date.toLocaleDateString('pt-BR')}</dd>
+                        <dt>Nº da OS:</dt><dd>${service.osNumero || 'N/A'}</dd>
+                        <div class="full-width"><dt>Motivo da Pendência:</dt><dd><pre>${service.motivo}</pre></dd></div>`;
+                if (service.motivoDetalhado) {
+                    statusInfoHtml += `<div class="full-width"><dt>Detalhes da Pendência:</dt><dd><pre>${service.motivoDetalhado}</pre></dd></div>`;
+                }
+                statusInfoHtml += `</dl>`;
+                break;
+
+            default:
+                const statusClass = service.status === 'Atrasada' ? 'atrasada' : 'pendente';
+                statusInfoHtml += `
+                    <legend>Próximo Agendamento</legend>
+                    <dl class="details-list">
+                        <dt>Serviço:</dt><dd>${service.servicoDescricao}</dd>
+                        <dt>Status:</dt><dd><span class="status-badge ${statusClass}">${service.status}</span></dd>
+                        <dt>Data Prevista:</dt><dd>${service.date.toLocaleDateString('pt-BR')}</dd>
+                        <dt>Periodicidade:</dt><dd>${service.periodicidade}</dd>
+                        <dt>Nº da OS:</dt><dd>${service.osNumero || 'N/A'}</dd>
+                    </dl>`;
+                break;
+        }
+        statusInfoHtml += '</fieldset>';
+
+        const detailsHtml = assetInfoHtml + statusInfoHtml;
+        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Fechar</button>`;
+        showModal('Detalhes do Serviço de Manutenção', detailsHtml, footerHtml);
+    }
+
+    // --- LÓGICA DE EXPORTAÇÃO E IMPORTAÇÃO ---
+    function handleShowExportPlanModal() {
         const todayStr = today.toISOString().slice(0, 10);
+        const areasCheckboxes = appData.grandesAreas.map(area => `
+            <div class="checkbox-group">
+                <input type="checkbox" id="area-${area.id}" name="report-area" value="${area.id}" checked>
+                <label for="area-${area.id}">${area.nome}</label>
+            </div>
+        `).join('');
         const bodyHtml = `
             <form id="report-form">
-                <p>Selecione o período para gerar o relatório de serviços pendentes.</p>
+                <p>Selecione o período e as áreas para gerar o Plano de Manutenção.</p>
                 <div class="form-layout">
                     <div class="form-group">
                         <label for="report-start-date">Data Inicial:</label>
@@ -752,69 +1305,30 @@ document.addEventListener('DOMContentLoaded', () => {
                         <input type="date" id="report-end-date">
                     </div>
                 </div>
+                <div class="report-areas-container">
+                    <h4>Filtrar por Grande Área</h4>
+                    <div class="checkbox-group select-all">
+                        <input type="checkbox" id="report-select-all-areas" checked>
+                        <label for="report-select-all-areas">Selecionar Todas</label>
+                    </div>
+                    <div class="checkbox-grid">
+                        ${areasCheckboxes}
+                    </div>
+                </div>
             </form>
         `;
         const footerHtml = `
             <button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button>
-            <button class="btn btn-primary" data-action="gerar-relatorio-confirmado">Gerar Relatório</button>
+            <button class="btn btn-primary" data-action="confirm-export-plan">Gerar Plano (.xlsx)</button>
         `;
-        showModal('Gerar Relatório de Manutenção', bodyHtml, footerHtml);
+        showModal('Gerar Plano de Manutenção', bodyHtml, footerHtml);
     }
 
-    function generateReportPageHTML(tasks, period) {
-        const groupedByComponent = tasks.reduce((acc, task) => {
-            const componente = MOCK_DATA.componentes.find(c => c.id === task.componenteId);
-            if (!acc[task.componenteId]) {
-                acc[task.componenteId] = {
-                    name: task.componenteName,
-                    location: [componente.edificio, componente.andar, componente.sala, componente.complemento].filter(Boolean).join(', '),
-                    tasks: []
-                };
-            }
-            acc[task.componenteId].tasks.push(task);
-            return acc;
-        }, {});
-    
-        let reportHTML = `
-            <!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório de Manutenção Preventiva</title>
-            <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px; color: #333; }
-                .report-container { max-width: 900px; margin: auto; }
-                header { text-align: center; border-bottom: 2px solid #0056b3; padding-bottom: 10px; margin-bottom: 20px; }
-                header h1 { margin: 0; color: #0056b3; } header p { margin: 5px 0; }
-                .component-section { margin-bottom: 30px; page-break-inside: avoid; }
-                .component-section h2 { background-color: #f4f6f9; padding: 10px; border-radius: 5px; margin-bottom: 5px; font-size: 1.2em; }
-                .component-section p { margin: 0 0 10px 10px; font-style: italic; color: #6c757d; }
-                table { width: 100%; border-collapse: collapse; }
-                th, td { border: 1px solid #dee2e6; padding: 8px; text-align: left; font-size: 0.9em; }
-                thead { background-color: #f8f9fa; } .obs-col { width: 35%; }
-                .print-button { display: block; margin: 20px auto; padding: 10px 20px; font-size: 16px; cursor: pointer; border-radius: 5px; border: 1px solid #0056b3; background-color: #0056b3; color: white; }
-                @media print { .print-button { display: none; } body { padding: 0; } }
-            </style></head><body><div class="report-container">
-                <header><h1>Plano de Manutenção Preventiva</h1><p>${period}</p><p>Gerado em: ${new Date().toLocaleString('pt-BR')}</p></header>
-                <button class="print-button" onclick="window.print()">Imprimir Relatório</button>`;
-    
-        for (const componentId in groupedByComponent) {
-            const group = groupedByComponent[componentId];
-            group.tasks.sort((a, b) => a.date - b.date);
-            reportHTML += `<div class="component-section"><h2>${group.name}</h2><p><strong>Localização:</strong> ${group.location}</p>
-                <table><thead><tr><th>Serviço</th><th>Periodicidade</th><th>Data Prevista</th><th>Criticidade</th><th class="obs-col">Observações</th></tr></thead><tbody>`;
-            group.tasks.forEach(task => {
-                reportHTML += `<tr><td>${task.tarefaDescricao}</td><td>${task.periodicidade}</td><td>${task.date.toLocaleDateString('pt-BR')}</td><td>${task.criticidade}</td><td></td></tr>`;
-            });
-            reportHTML += `</tbody></table></div>`;
-        }
-    
-        reportHTML += `</div></body></html>`;
-    
-        const reportWindow = window.open('', '_blank');
-        reportWindow.document.write(reportHTML);
-        reportWindow.document.close();
-    }
-
-    function handleGenerateReportFromModal() {
+    function confirmAndGeneratePlan() {
         const startDate = document.getElementById('report-start-date').value;
         const endDate = document.getElementById('report-end-date').value;
+        const selectedAreaIds = Array.from(document.querySelectorAll('input[name="report-area"]:checked'))
+                                     .map(checkbox => parseInt(checkbox.value));
     
         if (!startDate || !endDate) {
             alert('Por favor, selecione a data inicial e a data final.');
@@ -824,29 +1338,617 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('A data inicial não pode ser posterior à data final.');
             return;
         }
-    
-        const allUpcomingTasks = generateTaskInstances();
-        const filteredTasks = allUpcomingTasks.filter(task => {
-            const taskDateOnly = new Date(task.date.toISOString().slice(0, 10) + 'T12:00:00');
-            const start = new Date(startDate + 'T12:00:00');
-            const end = new Date(endDate + 'T12:00:00');
-            return taskDateOnly >= start && taskDateOnly <= end;
-        });
-    
-        if (filteredTasks.length === 0) {
-            alert('Nenhum serviço pendente encontrado para o período selecionado.');
+        if (selectedAreaIds.length === 0) {
+            alert('Por favor, selecione pelo menos uma Grande Área para gerar o plano.');
             return;
         }
     
-        const startFormatted = new Date(startDate + 'T12:00:00').toLocaleDateString('pt-BR');
-        const endFormatted = new Date(endDate + 'T12:00:00').toLocaleDateString('pt-BR');
-        const period = `Período: ${startFormatted} a ${endFormatted}`;
+        const allServices = getAllMaintenanceServicesForDisplay();
+        const servicesToReport = allServices.filter(s => s.status === 'A vencer' || s.status === 'Atrasada' || s.status === 'Pendente');
+
+        const filteredServices = servicesToReport.filter(service => {
+            const serviceDateOnly = new Date(service.date.toISOString().slice(0, 10) + 'T12:00:00');
+            const start = new Date(startDate + 'T12:00:00');
+            const end = new Date(endDate + 'T12:00:00');
+            const isInDateRange = serviceDateOnly >= start && serviceDateOnly <= end;
+            const isInSelectedArea = selectedAreaIds.includes(service.grandeAreaId);
+            return isInDateRange && isInSelectedArea;
+        });
     
-        generateReportPageHTML(filteredTasks, period);
+        if (filteredServices.length === 0) {
+            alert('Nenhum serviço encontrado para os filtros selecionados.');
+            return;
+        }
+    
+        generatePlanXLSX(filteredServices);
         closeModal();
     }
 
-    // --- NAVEGAÇÃO E EVENT LISTENERS GLOBAIS ---
+    async function generatePlanXLSX(services) {
+        const dataForSheet = services.map(service => {
+            const componente = appData.componentes.find(c => c.id === service.componenteId);
+            const grandeArea = appData.grandesAreas.find(g => g.id === service.grandeAreaId);
+            const sistema = appData.sistemas.find(s => s.id === service.sistemaId);
+            const subSistema = service.subSistemaId ? appData.subSistemas.find(ss => ss.id === service.subSistemaId) : null;
+            
+            const localizacao = [componente.edificio, componente.andar, componente.sala, componente.complemento].filter(Boolean).join(' - ');
+
+            return {
+                os: service.osNumero,
+                grandeArea: grandeArea ? grandeArea.nome : 'N/A',
+                sistema: sistema ? sistema.nome : 'N/A',
+                subsistema: subSistema ? subSistema.nome : '',
+                componente: service.componenteName,
+                servico: service.servicoDescricao,
+                periodicidade: service.periodicidade,
+                dataPrevista: service.date.toLocaleDateString('pt-BR'),
+                criticidade: service.criticidade,
+                localizacao: localizacao,
+                dataRealizacao: '',
+                conclusao: '', 
+                observacoes: '', 
+                motivoPendencia: '', 
+                detalhesPendencia: '', 
+            };
+        });
+
+        if (!dataForSheet || dataForSheet.length === 0) {
+            alert("Nenhum dado para exportar.");
+            return;
+        }
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Plano de Manutenção');
+
+        worksheet.columns = [
+            { header: 'OS', key: 'os' },
+            { header: 'Grande Área', key: 'grandeArea' },
+            { header: 'Sistema', key: 'sistema' },
+            { header: 'Subsistema', key: 'subsistema' },
+            { header: 'Componente', key: 'componente' },
+            { header: 'Serviço', key: 'servico' },
+            { header: 'Periodicidade', key: 'periodicidade' },
+            { header: 'Data Prevista', key: 'dataPrevista' },
+            { header: 'Criticidade', key: 'criticidade' },
+            { header: 'Localização', key: 'localizacao' },
+            { header: 'Data de Realização', key: 'dataRealizacao' },
+            { header: 'Conclusão', key: 'conclusao' },
+            { header: 'Detalhes da Conclusão (opcional)', key: 'observacoes' },
+            { header: 'Motivo da Pendência (se houver)', key: 'motivoPendencia' },
+            { header: 'Detalhes da Pendência (se houver)', key: 'detalhesPendencia' },
+        ];
+
+        worksheet.addRows(dataForSheet);
+
+        const headerRow = worksheet.getRow(1);
+        headerRow.height = 30;
+        headerRow.eachCell(cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2c3e50' } };
+            cell.font = { color: { argb: 'FFecf0f1' }, bold: true, size: 12 };
+            cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+            cell.border = {
+                top: { style: 'thin', color: { argb: 'FFa0a0a0' } }, left: { style: 'thin', color: { argb: 'FFa0a0a0' } },
+                bottom: { style: 'thin', color: { argb: 'FFa0a0a0' } }, right: { style: 'thin', color: { argb: 'FFa0a0a0' } }
+            };
+        });
+        
+        worksheet.autoFilter = { from: 'A1', to: { row: 1, column: worksheet.columns.length } };
+
+        const editableColumns = ['dataRealizacao', 'conclusao', 'observacoes', 'motivoPendencia', 'detalhesPendencia'];
+
+        worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+            if (rowNumber === 1) return;
+            row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                const columnKey = worksheet.columns[colNumber - 1].key;
+                if (!editableColumns.includes(columnKey)) {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDEEFF' } };
+                }
+            });
+
+            const dataRealizacaoCell = row.getCell('K');
+            dataRealizacaoCell.numFmt = 'dd/mm/yyyy';
+            dataRealizacaoCell.protection = { locked: false };
+
+            const conclusaoCell = row.getCell('L');
+            conclusaoCell.dataValidation = { type: 'list', allowBlank: true, formulae: ['"Concluído,Pendente"'] };
+            conclusaoCell.protection = { locked: false };
+            row.getCell('M').protection = { locked: false };
+            const motivoCell = row.getCell('N');
+            motivoCell.dataValidation = { type: 'list', allowBlank: true, formulae: ['"Material insuficiente,Falta de autorização,Pessoal insuficiente,Outros"'] };
+            motivoCell.protection = { locked: false };
+            row.getCell('O').protection = { locked: false };
+        });
+
+        worksheet.columns.forEach(column => {
+            let maxLength = 0;
+            const headerLength = column.header ? column.header.length : 0;
+            maxLength = headerLength > maxLength ? headerLength : maxLength;
+            
+            column.eachCell({ includeEmpty: true }, cell => {
+                let columnLength = cell.value ? cell.value.toString().length : 0;
+                if (columnLength > maxLength) {
+                    maxLength = columnLength;
+                }
+            });
+            column.width = maxLength < 15 ? 15 : maxLength + 4;
+        });
+
+        worksheet.getColumn('observacoes').width = 60;
+        worksheet.getColumn('detalhesPendencia').width = 60;
+
+        await worksheet.protect('', {
+            selectLockedCells: true,
+            selectUnlockedCells: true,
+            formatCells: false,
+            autoFilter: true
+        });
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        const todayStr = new Date().toISOString().slice(0, 10);
+        link.download = `Plano_de_Manutencao_${todayStr}.xlsx`;
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    async function generatePmocXLSX() {
+        const dataForSheet = [];
+        
+        appData.componentes.forEach(componente => {
+            const grandeArea = appData.grandesAreas.find(g => g.id === componente.grandeAreaId);
+            const sistema = appData.sistemas.find(s => s.id === componente.sistemaId);
+            const subSistema = componente.subSistemaId ? appData.subSistemas.find(ss => ss.id === componente.subSistemaId) : null;
+            
+            const localizacao = [componente.edificio, componente.andar, componente.sala, componente.complemento].filter(Boolean).join(', ');
+
+            const inheritedServices = sistema ? sistema.checklist || [] : [];
+            const subSystemServices = subSistema ? subSistema.checklist || [] : [];
+            const specificServices = componente.servicosEspecificos || [];
+            
+            const allServices = [...inheritedServices, ...subSystemServices, ...specificServices];
+
+            allServices.forEach(servico => {
+                dataForSheet.push({
+                    grandeArea: grandeArea ? grandeArea.nome : 'N/A',
+                    sistema: sistema ? sistema.nome : 'N/A',
+                    subsistema: subSistema ? subSistema.nome : '-',
+                    componente: componente.nome,
+                    criticidade: componente.criticidade,
+                    localizacao: localizacao || '-',
+                    areaResponsavel: sistema ? sistema.areaResponsavel : 'N/A',
+                    pessoaResponsavel: sistema ? sistema.pessoaResponsavel : 'N/A',
+                    servico: servico.servico,
+                    periodicidade: servico.periodicidade
+                });
+            });
+        });
+
+        if (dataForSheet.length === 0) {
+            alert("Nenhum serviço de manutenção foi encontrado nos componentes cadastrados para gerar o PMOC.");
+            return;
+        }
+
+        dataForSheet.sort((a, b) => {
+            return a.grandeArea.localeCompare(b.grandeArea) ||
+                   a.sistema.localeCompare(b.sistema) ||
+                   a.subsistema.localeCompare(b.subsistema) ||
+                   a.componente.localeCompare(b.componente) ||
+                   a.servico.localeCompare(b.servico);
+        });
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('PMOC');
+
+        worksheet.columns = [
+            { header: 'Grande Área', key: 'grandeArea', width: 25 },
+            { header: 'Sistema', key: 'sistema', width: 30 },
+            { header: 'Subsistema', key: 'subsistema', width: 25 },
+            { header: 'Componente', key: 'componente', width: 35 },
+            { header: 'Criticidade', key: 'criticidade', width: 15 },
+            { header: 'Localização', key: 'localizacao', width: 40 },
+            { header: 'Área Responsável', key: 'areaResponsavel', width: 25 },
+            { header: 'Pessoa Responsável', key: 'pessoaResponsavel', width: 25 },
+            { header: 'Serviço', key: 'servico', width: 50 },
+            { header: 'Periodicidade', key: 'periodicidade', width: 20 },
+        ];
+
+        worksheet.addRows(dataForSheet);
+
+        const headerRow = worksheet.getRow(1);
+        headerRow.height = 30;
+        headerRow.eachCell(cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2c3e50' } };
+            cell.font = { color: { argb: 'FFecf0f1' }, bold: true, size: 12 };
+            cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+
+        worksheet.eachRow((row, rowNumber) => {
+            if (rowNumber === 1) return;
+            row.eachCell(cell => {
+                cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            });
+        });
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        const todayStr = new Date().toISOString().slice(0, 10);
+        link.download = `PMOC_Servicos_${todayStr}.xlsx`;
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    async function generateFullBackupXLSX() {
+        const allServices = getAllMaintenanceServicesForDisplay();
+
+        if (allServices.length === 0) {
+            alert("Não há nenhum serviço de manutenção (histórico ou futuro) para exportar.");
+            return;
+        }
+
+        const dataForSheet = allServices.map(service => {
+            const componente = appData.componentes.find(c => c.id === service.componenteId);
+            const grandeArea = appData.grandesAreas.find(g => g.id === service.grandeAreaId);
+            const sistema = appData.sistemas.find(s => s.id === service.sistemaId);
+            const subSistema = service.subSistemaId ? appData.subSistemas.find(ss => ss.id === service.subSistemaId) : null;
+            
+            const localizacao = [componente.edificio, componente.andar, componente.sala, componente.complemento].filter(Boolean).join(', ');
+
+            return {
+                os: service.osNumero || 'N/A',
+                status: service.status,
+                data: service.date.toLocaleDateString('pt-BR'),
+                componente: service.componenteName,
+                servico: service.servicoDescricao,
+                criticidade: service.criticidade,
+                periodicidade: service.periodicidade,
+                grandeArea: grandeArea ? grandeArea.nome : 'N/A',
+                sistema: sistema ? sistema.nome : 'N/A',
+                subsistema: subSistema ? subSistema.nome : '-',
+                localizacao: localizacao || '-',
+                observacoes: service.obs || '-',
+                motivoPendencia: service.motivo || '-',
+                detalhesPendencia: service.motivoDetalhado || '-'
+            };
+        });
+        
+        dataForSheet.sort((a, b) => new Date(a.data.split('/').reverse().join('-')) - new Date(b.data.split('/').reverse().join('-')));
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Backup Completo Manutencoes');
+
+        worksheet.columns = [
+            { header: 'Nº da OS', key: 'os', width: 20 },
+            { header: 'Status', key: 'status', width: 15 },
+            { header: 'Data (Prevista/Realizada)', key: 'data', width: 20 },
+            { header: 'Componente', key: 'componente', width: 35 },
+            { header: 'Serviço', key: 'servico', width: 50 },
+            { header: 'Criticidade', key: 'criticidade', width: 15 },
+            { header: 'Periodicidade', key: 'periodicidade', width: 18 },
+            { header: 'Grande Área', key: 'grandeArea', width: 25 },
+            { header: 'Sistema', key: 'sistema', width: 30 },
+            { header: 'Subsistema', key: 'subsistema', width: 25 },
+            { header: 'Localização', key: 'localizacao', width: 40 },
+            { header: 'Observações (Conclusão)', key: 'observacoes', width: 50 },
+            { header: 'Motivo da Pendência', key: 'motivoPendencia', width: 40 },
+            { header: 'Detalhes da Pendência', key: 'detalhesPendencia', width: 50 },
+        ];
+
+        worksheet.addRows(dataForSheet);
+
+        const headerRow = worksheet.getRow(1);
+        headerRow.height = 30;
+        headerRow.eachCell(cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2c3e50' } };
+            cell.font = { color: { argb: 'FFecf0f1' }, bold: true, size: 12 };
+            cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+        
+        worksheet.eachRow((row, rowNumber) => {
+            if (rowNumber === 1) return;
+            row.eachCell(cell => {
+                cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            });
+        });
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        const todayStr = new Date().toISOString().slice(0, 10);
+        link.download = `Backup_Completo_Manutencoes_${todayStr}.xlsx`;
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    function handleImportReport() {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = '.xlsx, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        fileInput.addEventListener('change', processImportedFile);
+        fileInput.click();
+    }
+
+    async function processImportedFile(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const buffer = e.target.result;
+                const workbook = new ExcelJS.Workbook();
+                await workbook.xlsx.load(buffer);
+
+                const worksheet = workbook.worksheets[0];
+                if (!worksheet) {
+                    alert('Erro: A planilha está vazia ou não foi encontrada.');
+                    return;
+                }
+
+                const parsedServices = [];
+                worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+                    if (rowNumber === 1) return;
+
+                    const serviceData = {
+                        os: row.getCell('A').value,
+                        componente: row.getCell('E').value,
+                        servico: row.getCell('F').value,
+                        dataPrevista: row.getCell('H').value,
+                        dataRealizacao: row.getCell('K').value,
+                        conclusao: row.getCell('L').value,
+                        observacoes: row.getCell('M').value,
+                        motivoPendencia: row.getCell('N').value,
+                        detalhesPendencia: row.getCell('O').value,
+                    };
+
+                    if (serviceData.conclusao) {
+                        parsedServices.push(serviceData);
+                    }
+                });
+
+                if (parsedServices.length === 0) {
+                    alert('Nenhum serviço com status preenchido foi encontrado na planilha.');
+                    return;
+                }
+
+                showValidationModal(parsedServices);
+
+            } catch (error) {
+                console.error("Erro ao processar o arquivo XLSX:", error);
+                alert('Ocorreu um erro ao ler o arquivo. Verifique se o formato está correto.');
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function showValidationModal(services) {
+        const itemsHtml = services.map((service, index) => {
+            const status = normalizeStatus(service.conclusao);
+            const statusClass = status === 'Concluído' ? 'status-concluida' : 'status-atrasada';
+            const details = status === 'Concluído' 
+                ? `Realizado em: ${service.dataRealizacao ? new Date(service.dataRealizacao).toLocaleDateString('pt-BR') : 'N/A'}`
+                : `Motivo: ${service.motivoPendencia || 'Não especificado'}`;
+
+            return `
+                <div class="checkbox-group validation-item" data-index="${index}">
+                    <input type="checkbox" id="val-item-${index}" name="validation-item" checked>
+                    <label for="val-item-${index}">
+                        <strong>${service.componente}</strong> - ${service.servico}
+                        <small><span class="status-badge ${statusClass}">${status}</span> ${details}</small>
+                    </label>
+                </div>
+            `;
+        }).join('');
+
+        const bodyHtml = `
+            <p>Revise os serviços importados. Desmarque qualquer item que você <strong>não</strong> queira aprovar. Os itens não aprovados serão marcados como pendentes.</p>
+            <div class="checkbox-group select-all">
+                <input type="checkbox" id="validation-select-all" checked>
+                <label for="validation-select-all">Selecionar/Desmarcar Todos</label>
+            </div>
+            <div class="validation-list-container">${itemsHtml}</div>
+        `;
+
+        const footerHtml = `
+            <button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button>
+            <button class="btn btn-primary" data-action="confirm-import">Confirmar e Atualizar Sistema</button>
+        `;
+
+        modalContainer.dataset.importedServices = JSON.stringify(services);
+
+        showModal('Validar Relatório de Manutenção', bodyHtml, footerHtml);
+    }
+
+    function normalizeStatus(text) {
+        if (typeof text !== 'string') return '';
+        const cleanText = text.trim().toLowerCase();
+        if (cleanText.includes('concluido') || cleanText.includes('concluído')) {
+            return 'Concluído';
+        }
+        if (cleanText.includes('pendente')) {
+            return 'Pendente';
+        }
+        return '';
+    }
+
+    function confirmImport() {
+        const importedServices = JSON.parse(modalContainer.dataset.importedServices || '[]');
+        const validationItems = document.querySelectorAll('.validation-item');
+        
+        let updatedCount = 0;
+        let unvalidatedCount = 0;
+        let skippedCount = 0;
+
+        const allCurrentServices = getAllMaintenanceServicesForDisplay();
+
+        validationItems.forEach(item => {
+            const index = parseInt(item.dataset.index);
+            const serviceData = importedServices[index];
+            const checkbox = item.querySelector('input[type="checkbox"]');
+
+            const correspondingService = allCurrentServices.find(s => s.osNumero === serviceData.os);
+            if (!correspondingService) {
+                skippedCount++;
+                return;
+            }
+
+            const newHistoryId = appData.historicoManutencoes.length > 0 ? Math.max(...appData.historicoManutencoes.map(h => h.id)) + 1 : 1;
+            
+            if (checkbox.checked) {
+                let status = normalizeStatus(serviceData.conclusao);
+                if (serviceData.motivoPendencia || serviceData.detalhesPendencia) {
+                    status = 'Pendente';
+                }
+
+                if (status === 'Concluído') {
+                    let completionDate = serviceData.dataRealizacao;
+                    if (!completionDate) {
+                        const parts = serviceData.dataPrevista.split('/');
+                        completionDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+                    } else {
+                        completionDate = new Date(completionDate).toISOString().slice(0, 10);
+                    }
+                    
+                    appData.historicoManutencoes.push({
+                        id: newHistoryId,
+                        componenteId: correspondingService.componenteId,
+                        servicoId: correspondingService.servicoId,
+                        data: completionDate,
+                        status: 'Concluído',
+                        os: serviceData.os,
+                        obs: serviceData.observacoes || 'Serviço concluído via importação.'
+                    });
+                    updatedCount++;
+                } else if (status === 'Pendente') {
+                    appData.historicoManutencoes.push({
+                        id: newHistoryId,
+                        componenteId: correspondingService.componenteId,
+                        servicoId: correspondingService.servicoId,
+                        data: new Date().toISOString().slice(0, 10),
+                        status: 'Pendente',
+                        os: serviceData.os,
+                        motivo: serviceData.motivoPendencia || 'Pendente via importação',
+                        motivoDetalhado: serviceData.detalhesPendencia || ''
+                    });
+                    updatedCount++;
+                } else {
+                    skippedCount++;
+                }
+            } else {
+                appData.historicoManutencoes.push({
+                    id: newHistoryId,
+                    componenteId: correspondingService.componenteId,
+                    servicoId: correspondingService.servicoId,
+                    data: new Date().toISOString().slice(0, 10),
+                    status: 'Pendente',
+                    os: serviceData.os,
+                    motivo: 'Não validado pelo fiscal',
+                    motivoDetalhado: 'A execução reportada pela equipe não foi aprovada na validação.'
+                });
+                unvalidatedCount++;
+            }
+        });
+
+        saveData();
+        closeModal();
+        
+        let summary = `Importação concluída!\n\n- ${updatedCount} serviços foram atualizados.\n- ${unvalidatedCount} serviços foram marcados como pendentes por não serem validados.\n- ${skippedCount} serviços não puderam ser processados (OS não encontrada).`;
+        alert(summary);
+
+        location.reload();
+    }
+
+    function handleSaveAsJson() {
+        try {
+            const dataStr = JSON.stringify(appData, null, 2); 
+            const blob = new Blob([dataStr], { type: "application/json" });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            const todayStr = new Date().toISOString().slice(0, 10);
+            link.download = `gestor_manutencao_backup_${todayStr}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            console.error("Erro ao gerar o arquivo JSON:", error);
+            alert("Ocorreu um erro ao tentar salvar o arquivo. Verifique o console para mais detalhes.");
+        }
+    }
+
+    function handleFileNew() {
+        const bodyHtml = `<p>Você tem certeza que deseja criar um novo arquivo? Todo o progresso não salvo será perdido.</p>`;
+        const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-danger" data-action="confirm-file-new">Criar Novo</button>`;
+        showModal('Criar Novo Arquivo', bodyHtml, footerHtml);
+    }
+
+    function confirmFileNew() {
+        appData = getInitialEmptyData();
+        saveData();
+        closeModal();
+        location.reload();
+    }
+
+    function handleFileOpen() {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = '.json,application/json';
+        fileInput.addEventListener('change', processLoadedFile);
+        fileInput.click();
+    }
+
+    function processLoadedFile(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const loadedData = JSON.parse(e.target.result);
+                if (loadedData && loadedData.grandesAreas && loadedData.sistemas && loadedData.componentes) {
+                    pendingLoadedData = loadedData;
+                    const bodyHtml = `<p>Você tem certeza que deseja abrir este arquivo? Todo o progresso não salvo será substituído.</p>`;
+                    const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-primary" data-action="confirm-file-open">Abrir Arquivo</button>`;
+                    showModal('Confirmar Abertura', bodyHtml, footerHtml);
+                } else {
+                    alert('Erro: O arquivo selecionado não parece ser um backup válido do Gestor de Manutenção.');
+                }
+            } catch (error) {
+                console.error("Erro ao processar o arquivo JSON:", error);
+                alert('Erro: Ocorreu um problema ao ler o arquivo. Ele pode não ser um JSON válido.');
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    function confirmFileOpen() {
+        if (!pendingLoadedData) {
+            alert('Erro: Nenhum dado de arquivo para carregar.');
+            return;
+        }
+        appData = pendingLoadedData;
+        pendingLoadedData = null;
+        saveData();
+        closeModal();
+        location.reload();
+    }
+
     function navigateTo(screenId) {
         activeScreen = screenId;
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -870,7 +1972,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const target = e.target;
         const navLink = target.closest('.nav-link[data-target]');
         const dropdownLink = target.closest('.dropdown > a.nav-link');
-        const calendarDay = target.closest('.calendar-day.has-tasks');
+        const calendarDay = target.closest('.calendar-day.has-services');
         const actionButton = target.closest('[data-action]');
         if (navLink) { e.preventDefault(); navigateTo(navLink.dataset.target); return; }
         if (dropdownLink) { e.preventDefault(); dropdownLink.parentElement.classList.toggle('open'); }
@@ -880,16 +1982,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const action = actionButton.dataset.action;
             const id = parseInt(actionButton.dataset.id);
             const historyId = parseInt(actionButton.dataset.historyId);
-            const componenteId = parseInt(actionButton.dataset.componenteId);
-            const tarefaId = actionButton.dataset.tarefaId;
+            const componenteId = actionButton.dataset.componenteId;
+            const servicoId = actionButton.dataset.servicoId;
             const startDateInput = document.getElementById('filter-data-inicio');
             const endDateInput = document.getElementById('filter-data-fim');
             const todayForFilters = new Date(today);
             switch(action) {
+                case 'go-to-grandes-areas': navigateTo('screen-lista-grandes-areas'); break;
+                case 'go-to-sistemas': navigateTo('screen-lista-sistemas'); break;
                 case 'voltar': navigateTo('screen-painel'); break;
                 case 'clear-filter': activeDateFilter = null; calendarDate = new Date(today); renderPainelManutencao(); break;
-                case 'criar-backup': alert('Backup simulado com sucesso!'); break;
-                case 'restaurar-backup': if (confirm('Deseja simular a restauração?')) { alert('Dados restaurados! (Simulação)'); } break;
                 case 'cancel-modal': closeModal(); break;
                 case 'nova-grande-area': handleAddGrandeArea(); break;
                 case 'edit-grande-area': handleEditGrandeArea(id); break;
@@ -901,6 +2003,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'delete-sistema': handleDeleteSistema(id); break;
                 case 'save-sistema': saveSistema(); break;
                 case 'confirm-delete-sistema': confirmDeleteSistema(); break;
+                case 'novo-subsistema': handleAddSubSistema(); break;
+                case 'edit-subsistema': handleEditSubSistema(id); break;
+                case 'delete-subsistema': handleDeleteSubSistema(id); break;
+                case 'save-subsistema': saveSubSistema(); break;
+                case 'confirm-delete-subsistema': confirmDeleteSubSistema(); break;
                 case 'add-checklist-item':
                     const formGroup = actionButton.closest('.form-group');
                     if (formGroup) {
@@ -913,22 +2020,45 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'edit-componente': handleEditComponente(id); break;
                 case 'delete-componente': handleDeleteComponente(id); break;
                 case 'save-componente': saveComponente(); break;
-                case 'confirm-delete-componente': confirmDeleteComponente(); break;
-                case 'complete-task': handleCompleteTask(componenteId, tarefaId); break;
+                case 'complete-service': handleCompleteService(componenteId, servicoId); break;
+                case 'choose-completed': showCompletionForm(); break;
+                case 'choose-pending': showPendingForm(); break;
                 case 'save-completion': saveCompletion(); break;
-                case 'revert-task': handleRevertTask(historyId); break;
-                case 'confirm-revert-task': confirmRevertTask(); break;
-                case 'toggle-task-group':
-                    const groupHeader = actionButton.closest('.task-group-header');
-                    if (groupHeader) {
-                        groupHeader.parentElement.classList.toggle('open');
-                    }
+                case 'save-pending-status': savePendingStatus(); break;
+                case 'revert-service': handleRevertService(historyId); break;
+                case 'confirm-revert-service': confirmRevertService(); break;
+                case 'toggle-service-group':
+                    const groupHeader = actionButton.closest('.service-group-header');
+                    if (groupHeader) groupHeader.parentElement.classList.toggle('open');
                     break;
                 case 'toggle-alert-box':
-                    actionButton.parentElement.classList.toggle('open');
+                    actionButton.closest('.alerta-box').classList.toggle('open');
                     break;
-                case 'gerar-relatorio': handleShowReportModal(); break;
-                case 'gerar-relatorio-confirmado': handleGenerateReportFromModal(); break;
+                case 'view-service-details':
+                    const row = actionButton.closest('tr');
+                    if (row) handleViewServiceDetails(row.dataset.componenteId, row.dataset.servicoId, row.dataset.historyId);
+                    break;
+                case 'view-all-services':
+                    const filterType = actionButton.dataset.filter;
+                    navigateTo('screen-manutencoes');
+                    document.getElementById('maintenance-filters').querySelectorAll('select, input').forEach(el => el.value = '');
+                    if (filterType === 'vencidos') {
+                        document.getElementById('filter-status').value = 'Atrasada';
+                    } else if (filterType === 'pendentes') {
+                        document.getElementById('filter-status').value = 'Pendente';
+                    } else if (filterType === 'este-mes') {
+                        const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+                        const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                        document.getElementById('filter-data-inicio').value = firstDayOfMonth.toISOString().slice(0, 10);
+                        document.getElementById('filter-data-fim').value = lastDayOfMonth.toISOString().slice(0, 10);
+                    } else if (filterType === 'proximo-mes') {
+                        const nextMonthStart = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+                        const nextMonthEnd = new Date(today.getFullYear(), today.getMonth() + 2, 0);
+                        document.getElementById('filter-data-inicio').value = nextMonthStart.toISOString().slice(0, 10);
+                        document.getElementById('filter-data-fim').value = nextMonthEnd.toISOString().slice(0, 10);
+                    }
+                    applyFiltersAndRenderTable();
+                    break;
                 case 'filter-week':
                     const firstDayOfWeek = new Date(todayForFilters.setDate(todayForFilters.getDate() - todayForFilters.getDay()));
                     const lastDayOfWeek = new Date(todayForFilters.setDate(todayForFilters.getDate() - todayForFilters.getDay() + 6));
@@ -953,6 +2083,46 @@ document.addEventListener('DOMContentLoaded', () => {
                     populateMaintenanceFilters();
                     applyFiltersAndRenderTable();
                     break;
+                case 'go-to-page':
+                    const page = parseInt(actionButton.dataset.page);
+                    if (page) {
+                        maintenanceCurrentPage = page;
+                        applyFiltersAndRenderTable();
+                    }
+                    break;
+                case 'file-new': handleFileNew(); break;
+                case 'confirm-file-new': confirmFileNew(); break;
+                case 'file-open': handleFileOpen(); break;
+                case 'confirm-file-open': confirmFileOpen(); break;
+                case 'file-save': handleSaveAsJson(); break;
+                case 'export-plan': handleShowExportPlanModal(); break;
+                case 'confirm-export-plan': confirmAndGeneratePlan(); break;
+                case 'import-report': handleImportReport(); break;
+                case 'confirm-import': confirmImport(); break;
+                case 'export-pmoc': generatePmocXLSX(); break;
+                case 'export-backup': generateFullBackupXLSX(); break;
+                case 'apply-indicadores-filters': updateIndicadores(); break;
+                case 'clear-indicadores-filters':
+                    document.getElementById('indicadores-filters').querySelectorAll('select, input').forEach(el => el.value = '');
+                    renderIndicadoresScreen();
+                    break;
+                case 'filter-indicadores-month':
+                    document.getElementById('filter-indicadores-inicio').value = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+                    document.getElementById('filter-indicadores-fim').value = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().slice(0, 10);
+                    updateIndicadores();
+                    break;
+                case 'filter-indicadores-90-days':
+                    const ninetyDaysAgo = new Date(today);
+                    ninetyDaysAgo.setDate(today.getDate() - 90);
+                    document.getElementById('filter-indicadores-inicio').value = ninetyDaysAgo.toISOString().slice(0, 10);
+                    document.getElementById('filter-indicadores-fim').value = today.toISOString().slice(0, 10);
+                    updateIndicadores();
+                    break;
+                case 'filter-indicadores-year':
+                    document.getElementById('filter-indicadores-inicio').value = new Date(today.getFullYear(), 0, 1).toISOString().slice(0, 10);
+                    document.getElementById('filter-indicadores-fim').value = new Date(today.getFullYear(), 11, 31).toISOString().slice(0, 10);
+                    updateIndicadores();
+                    break;
             }
         }
     });
@@ -962,44 +2132,186 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target.id === 'componente-grande-area') {
             const grandeAreaId = parseInt(target.value);
             updateSistemaOptions(grandeAreaId);
-            updateInheritedInfo(null);
+            updateInheritedInfo(null, null);
         }
         if (target.id === 'componente-sistema') {
             const sistemaId = parseInt(target.value);
-            updateInheritedInfo(sistemaId);
+            updateSubSistemaOptions(sistemaId);
+            updateInheritedInfo(sistemaId, null);
+        }
+        if (target.id === 'componente-subsistema') {
+            const sistemaId = parseInt(document.getElementById('componente-sistema').value);
+            const subSistemaId = parseInt(target.value);
+            updateInheritedInfo(sistemaId, subSistemaId);
+        }
+        if (target.id === 'subsistema-grande-area') {
+            const grandeAreaId = parseInt(target.value);
+            updateSistemaOptionsForSubSistema(grandeAreaId);
+        }
+        if (target.id === 'report-select-all-areas') {
+            const isChecked = target.checked;
+            document.querySelectorAll('input[name="report-area"]').forEach(checkbox => {
+                checkbox.checked = isChecked;
+            });
+        } else if (target.name === 'report-area') {
+            const allAreasCheckboxes = document.querySelectorAll('input[name="report-area"]');
+            const allChecked = Array.from(allAreasCheckboxes).every(checkbox => checkbox.checked);
+            document.getElementById('report-select-all-areas').checked = allChecked;
+        }
+        if (target.id === 'pending-reason') {
+            const otherReasonGroup = document.getElementById('other-reason-group');
+            if (target.value === 'Outros') {
+                otherReasonGroup.classList.remove('hidden');
+                document.getElementById('pending-reason-other').focus();
+            } else {
+                otherReasonGroup.classList.add('hidden');
+            }
+        }
+        if (target.id === 'validation-select-all') {
+            const isChecked = target.checked;
+            document.querySelectorAll('input[name="validation-item"]').forEach(checkbox => {
+                checkbox.checked = isChecked;
+            });
         }
     });
 
     document.getElementById('maintenance-filters').addEventListener('change', (e) => {
-        const target = e.target;
-        if (target.id === 'filter-grande-area') {
-            const gaId = parseInt(target.value);
-            const sistemaSelect = document.getElementById('filter-sistema');
-            const componenteSelect = document.getElementById('filter-componente');
+        const grandeAreaSelect = document.getElementById('filter-grande-area');
+        const sistemaSelect = document.getElementById('filter-sistema');
+        const subSistemaSelect = document.getElementById('filter-subsistema');
+        const componenteSelect = document.getElementById('filter-componente');
+    
+        const grandeAreaId = parseInt(grandeAreaSelect.value);
+        const sistemaId = parseInt(sistemaSelect.value);
+        const subSistemaId = parseInt(subSistemaSelect.value);
+    
+        if (e.target === grandeAreaSelect) {
+            sistemaSelect.innerHTML = '<option value="">Todos</option>';
+            subSistemaSelect.innerHTML = '<option value="">Todos</option>';
+            componenteSelect.innerHTML = '<option value="">Todos</option>';
+            sistemaSelect.disabled = true;
+            subSistemaSelect.disabled = true;
+            componenteSelect.disabled = true;
+    
+            if (grandeAreaId) {
+                const sistemasNaArea = appData.sistemas.filter(s => s.grandeAreaId === grandeAreaId);
+                sistemaSelect.innerHTML += sistemasNaArea.map(s => `<option value="${s.id}">${s.nome}</option>`).join('');
+                sistemaSelect.disabled = false;
+            }
+        } else if (e.target === sistemaSelect) {
+            subSistemaSelect.innerHTML = '<option value="">Todos</option>';
+            componenteSelect.innerHTML = '<option value="">Todos</option>';
+            subSistemaSelect.disabled = true;
+            componenteSelect.disabled = true;
+    
+            if (sistemaId) {
+                const subSistemasNoSistema = appData.subSistemas.filter(ss => ss.sistemaId === sistemaId);
+                if (subSistemasNoSistema.length > 0) {
+                    subSistemaSelect.innerHTML += subSistemasNoSistema.map(ss => `<option value="${ss.id}">${ss.nome}</option>`).join('');
+                    subSistemaSelect.disabled = false;
+                }
+                const componentesNoSistema = appData.componentes.filter(c => c.sistemaId === sistemaId);
+                componenteSelect.innerHTML += componentesNoSistema.map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
+                componenteSelect.disabled = false;
+            }
+        } else if (e.target === subSistemaSelect) {
             componenteSelect.innerHTML = '<option value="">Todos</option>';
             componenteSelect.disabled = true;
-            if (gaId) {
-                const sistemas = MOCK_DATA.sistemas.filter(s => s.grandeAreaId === gaId);
-                sistemaSelect.innerHTML = '<option value="">Todos</option>' + sistemas.map(s => `<option value="${s.id}">${s.nome}</option>`).join('');
-                sistemaSelect.disabled = false;
-            } else {
-                sistemaSelect.innerHTML = '<option value="">Todos</option>';
-                sistemaSelect.disabled = true;
+    
+            if (sistemaId) {
+                let componentesFiltrados = appData.componentes.filter(c => c.sistemaId === sistemaId);
+                if (subSistemaId) {
+                    componentesFiltrados = componentesFiltrados.filter(c => c.subSistemaId === subSistemaId);
+                }
+                componenteSelect.innerHTML += componentesFiltrados.map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
+                componenteSelect.disabled = false;
             }
         }
-        if (target.id === 'filter-sistema') {
-             const sistemaId = parseInt(target.value);
-             const componenteSelect = document.getElementById('filter-componente');
-             if (sistemaId) {
-                const componentes = MOCK_DATA.componentes.filter(c => c.sistemaId === sistemaId);
-                componenteSelect.innerHTML = '<option value="">Todos</option>' + componentes.map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
-                componenteSelect.disabled = false;
-             } else {
-                componenteSelect.innerHTML = '<option value="">Todos</option>';
-                componenteSelect.disabled = true;
-             }
-        }
+    
+        maintenanceCurrentPage = 1;
         applyFiltersAndRenderTable();
+    });
+
+    document.getElementById('component-filters').addEventListener('change', () => {
+        let componentesFiltrados = appData.componentes;
+        const grandeAreaId = parseInt(document.getElementById('filter-comp-grande-area').value);
+        const sistemaId = parseInt(document.getElementById('filter-comp-sistema').value);
+        const subSistemaId = parseInt(document.getElementById('filter-comp-subsistema').value);
+
+        if (grandeAreaId) {
+            componentesFiltrados = componentesFiltrados.filter(c => c.grandeAreaId === grandeAreaId);
+            const sistemaSelect = document.getElementById('filter-comp-sistema');
+            const subSistemaSelect = document.getElementById('filter-comp-subsistema');
+            
+            const sistemasNaArea = appData.sistemas.filter(s => s.grandeAreaId === grandeAreaId);
+            sistemaSelect.innerHTML = '<option value="">Todos</option>' + sistemasNaArea.map(s => `<option value="${s.id}">${s.nome}</option>`).join('');
+            sistemaSelect.disabled = false;
+            
+            if (sistemaId) {
+                componentesFiltrados = componentesFiltrados.filter(c => c.sistemaId === sistemaId);
+                const subSistemasNoSistema = appData.subSistemas.filter(ss => ss.sistemaId === sistemaId);
+                if (subSistemasNoSistema.length > 0) {
+                    subSistemaSelect.innerHTML = '<option value="">Todos</option>' + subSistemasNoSistema.map(ss => `<option value="${ss.id}">${ss.nome}</option>`).join('');
+                    subSistemaSelect.disabled = false;
+                    if (subSistemaId) {
+                        componentesFiltrados = componentesFiltrados.filter(c => c.subSistemaId === subSistemaId);
+                    }
+                } else {
+                    subSistemaSelect.innerHTML = '<option value="">Nenhum</option>';
+                    subSistemaSelect.disabled = true;
+                }
+            } else {
+                subSistemaSelect.innerHTML = '<option value="">Todos</option>';
+                subSistemaSelect.disabled = true;
+                subSistemaSelect.value = '';
+            }
+        } else {
+            document.getElementById('filter-comp-sistema').disabled = true;
+            document.getElementById('filter-comp-sistema').value = '';
+            document.getElementById('filter-comp-subsistema').disabled = true;
+            document.getElementById('filter-comp-subsistema').value = '';
+        }
+        
+        renderListaComponentes(componentesFiltrados);
+    });
+
+    document.getElementById('sistemas-filters').addEventListener('change', () => {
+        const grandeAreaId = parseInt(document.getElementById('filter-sis-grande-area').value);
+        let sistemasFiltrados = appData.sistemas;
+
+        if (grandeAreaId) {
+            sistemasFiltrados = appData.sistemas.filter(s => s.grandeAreaId === grandeAreaId);
+        }
+
+        renderListaSistemas(sistemasFiltrados);
+    });
+
+    document.getElementById('subsistemas-filters').addEventListener('change', () => {
+        const grandeAreaId = parseInt(document.getElementById('filter-subsis-grande-area').value);
+        const sistemaId = parseInt(document.getElementById('filter-subsis-sistema').value);
+        const sistemaSelect = document.getElementById('filter-subsis-sistema');
+
+        let subSistemasFiltrados = appData.subSistemas;
+
+        if (grandeAreaId) {
+            const sistemasNaArea = appData.sistemas.filter(s => s.grandeAreaId === grandeAreaId);
+            sistemaSelect.innerHTML = '<option value="">Todos</option>' + sistemasNaArea.map(s => `<option value="${s.id}">${s.nome}</option>`).join('');
+            sistemaSelect.disabled = false;
+        } else {
+            sistemaSelect.innerHTML = '<option value="">Todos</option>';
+            sistemaSelect.disabled = true;
+        }
+
+        if (sistemaId) {
+            subSistemasFiltrados = subSistemasFiltrados.filter(ss => ss.sistemaId === sistemaId);
+        } else if (grandeAreaId) {
+            const sistemasDaAreaIds = appData.sistemas
+                .filter(s => s.grandeAreaId === grandeAreaId)
+                .map(s => s.id);
+            subSistemasFiltrados = subSistemasFiltrados.filter(ss => sistemasDaAreaIds.includes(ss.sistemaId));
+        }
+
+        renderListaSubSistemas(subSistemasFiltrados);
     });
 
     document.getElementById('maintenance-table').querySelector('thead').addEventListener('click', (e) => {
@@ -1015,5 +2327,249 @@ document.addEventListener('DOMContentLoaded', () => {
         applyFiltersAndRenderTable();
     });
 
+    document.getElementById('indicadores-filters').addEventListener('change', (e) => {
+        if (e.target.id === 'filter-indicadores-grande-area') {
+            const sistemaSelect = document.getElementById('filter-indicadores-sistema');
+            const grandeAreaId = parseInt(e.target.value);
+            
+            sistemaSelect.innerHTML = '<option value="">Todos</option>';
+            sistemaSelect.disabled = true;
+
+            if (grandeAreaId) {
+                const sistemasNaArea = appData.sistemas.filter(s => s.grandeAreaId === grandeAreaId);
+                sistemaSelect.innerHTML += sistemasNaArea.map(s => `<option value="${s.id}">${s.nome}</option>`).join('');
+                sistemaSelect.disabled = false;
+            }
+        }
+
+        // ADICIONADO: Chama a atualização dos indicadores em QUALQUER mudança de filtro
+        updateIndicadores();
+    });
+
+    // --- LÓGICA DA TELA DE INDICADORES ---
+
+    function renderIndicadoresScreen() {
+        const gaSelect = document.getElementById('filter-indicadores-grande-area');
+        gaSelect.innerHTML = '<option value="">Todas</option>' + appData.grandesAreas.map(g => `<option value="${g.id}">${g.nome}</option>`).join('');
+        
+        const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+        const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().slice(0, 10);
+        document.getElementById('filter-indicadores-inicio').value = firstDayOfMonth;
+        document.getElementById('filter-indicadores-fim').value = lastDayOfMonth;
+
+        updateIndicadores();
+    }
+
+    function updateIndicadores() {
+        Object.values(chartInstances).forEach(chart => chart.destroy());
+        chartInstances = {};
+
+        const startDate = document.getElementById('filter-indicadores-inicio').value;
+        const endDate = document.getElementById('filter-indicadores-fim').value;
+        const grandeAreaId = parseInt(document.getElementById('filter-indicadores-grande-area').value) || null;
+        const sistemaId = parseInt(document.getElementById('filter-indicadores-sistema').value) || null;
+        const criticidade = document.getElementById('filter-indicadores-criticidade').value || null;
+
+        let allServices = getAllMaintenanceServicesForDisplay();
+        
+        let filteredServices = allServices.filter(s => {
+            const serviceDate = new Date(s.date.toISOString().slice(0, 10));
+            const start = startDate ? new Date(startDate) : null;
+            const end = endDate ? new Date(endDate) : null;
+
+            if (start && serviceDate < start) return false;
+            if (end && serviceDate > end) return false;
+            if (grandeAreaId && s.grandeAreaId !== grandeAreaId) return false;
+            if (sistemaId && s.sistemaId !== sistemaId) return false;
+            if (criticidade && s.criticidade !== criticidade) return false;
+            
+            return true;
+        });
+
+        const kpiConformidade = calculateConformidade(allServices, startDate, endDate, grandeAreaId, sistemaId, criticidade);
+        document.getElementById('kpi-conformidade').textContent = `${kpiConformidade.toFixed(1)}%`;
+
+        const backlog = filteredServices.filter(s => s.status === 'Atrasada').length;
+        const kpiBacklogEl = document.getElementById('kpi-backlog');
+        kpiBacklogEl.textContent = backlog;
+        kpiBacklogEl.classList.toggle('has-backlog', backlog > 0);
+
+        const concluidas = filteredServices.filter(s => s.status === 'Concluído').length;
+        document.getElementById('kpi-concluidas').textContent = concluidas;
+
+        renderStatusGeralChart(filteredServices);
+        renderPlanejadoRealizadoChart(allServices);
+        renderServicosPorAreaChart(filteredServices);
+        renderServicosPorCriticidadeChart(filteredServices);
+        renderTopComponentesChart(allServices, grandeAreaId, sistemaId, criticidade);
+    }
+
+    function calculateConformidade(allServices, startDate, endDate, grandeAreaId, sistemaId, criticidade) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+
+        let planejados = allServices.filter(s => {
+            const serviceDate = new Date(s.date.toISOString().slice(0, 10));
+            if (serviceDate < start || serviceDate > end) return false;
+            if (grandeAreaId && s.grandeAreaId !== grandeAreaId) return false;
+            if (sistemaId && s.sistemaId !== sistemaId) return false;
+            if (criticidade && s.criticidade !== criticidade) return false;
+            return true;
+        });
+
+        if (planejados.length === 0) return 0.0;
+
+        const concluidosNoPrazo = planejados.filter(s => {
+            if (s.status !== 'Concluído') return false;
+            return true; 
+        }).length;
+
+        return (concluidosNoPrazo / planejados.length) * 100;
+    }
+
+    function renderStatusGeralChart(services) {
+        const ctx = document.getElementById('status-geral-chart').getContext('2d');
+        const statusCounts = services.reduce((acc, s) => {
+            acc[s.status] = (acc[s.status] || 0) + 1;
+            return acc;
+        }, {});
+
+        chartInstances.statusGeral = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(statusCounts),
+                datasets: [{
+                    data: Object.values(statusCounts),
+                    backgroundColor: ['#2ecc71', '#e74c3c', '#f39c12', '#3498db'],
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
+
+    function renderPlanejadoRealizadoChart(allServices) {
+        const ctx = document.getElementById('planejado-realizado-chart').getContext('2d');
+        const labels = [];
+        const dataPlanejado = [];
+        const dataRealizado = [];
+
+        for (let i = 5; i >= 0; i--) {
+            const date = new Date(today);
+            date.setMonth(today.getMonth() - i);
+            const month = date.toLocaleString('pt-BR', { month: 'short' });
+            const year = date.getFullYear();
+            labels.push(`${month}/${year}`);
+
+            const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
+            const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+
+            const planejadosMes = allServices.filter(s => s.date >= firstDay && s.date <= lastDay).length;
+            const realizadosMes = allServices.filter(s => s.status === 'Concluído' && s.date >= firstDay && s.date <= lastDay).length;
+            
+            dataPlanejado.push(planejadosMes);
+            dataRealizado.push(realizadosMes);
+        }
+
+        chartInstances.planejadoRealizado = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'Planejado', data: dataPlanejado, backgroundColor: '#7f8c98' },
+                    { label: 'Realizado', data: dataRealizado, backgroundColor: '#3581d1' }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+        });
+    }
+
+    function renderServicosPorAreaChart(services) {
+        const ctx = document.getElementById('servicos-area-chart').getContext('2d');
+        const areaCounts = services.reduce((acc, s) => {
+            const area = appData.grandesAreas.find(ga => ga.id === s.grandeAreaId);
+            if (area) {
+                acc[area.nome] = (acc[area.nome] || 0) + 1;
+            }
+            return acc;
+        }, {});
+
+        chartInstances.servicosArea = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(areaCounts),
+                datasets: [{
+                    label: 'Nº de Serviços',
+                    data: Object.values(areaCounts),
+                    backgroundColor: ['#3581d1', '#2ecc71', '#e74c3c', '#f39c12', '#9b59b6'],
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    function renderServicosPorCriticidadeChart(services) {
+        const ctx = document.getElementById('servicos-criticidade-chart').getContext('2d');
+        const criticidadeCounts = services.reduce((acc, s) => {
+            acc[s.criticidade] = (acc[s.criticidade] || 0) + 1;
+            return acc;
+        }, {});
+
+        chartInstances.servicosCriticidade = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: Object.keys(criticidadeCounts),
+                datasets: [{
+                    data: Object.values(criticidadeCounts),
+                    backgroundColor: ['#e74c3c', '#f39c12', '#3498db'],
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
+
+    function renderTopComponentesChart(allServices, grandeAreaId, sistemaId, criticidade) {
+        const ctx = document.getElementById('top-componentes-chart').getContext('2d');
+        
+        let servicesToAnalyze = allServices.filter(s => s.status === 'Atrasada');
+
+        if (grandeAreaId) servicesToAnalyze = servicesToAnalyze.filter(s => s.grandeAreaId === grandeAreaId);
+        if (sistemaId) servicesToAnalyze = servicesToAnalyze.filter(s => s.sistemaId === sistemaId);
+        if (criticidade) servicesToAnalyze = servicesToAnalyze.filter(s => s.criticidade === criticidade);
+
+        const componentCounts = servicesToAnalyze.reduce((acc, s) => {
+            acc[s.componenteName] = (acc[s.componenteName] || 0) + 1;
+            return acc;
+        }, {});
+
+        const sortedComponents = Object.entries(componentCounts)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 5);
+
+        chartInstances.topComponentes = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: sortedComponents.map(item => item[0]),
+                datasets: [{
+                    label: 'Nº de Serviços Atrasados',
+                    data: sortedComponents.map(item => item[1]),
+                    backgroundColor: '#e74c3c',
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    // --- INICIALIZAÇÃO DA APLICAÇÃO ---
+    loadData();
     navigateTo('screen-painel');
 });

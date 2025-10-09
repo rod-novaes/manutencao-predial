@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema Gestor de Manutenção Predial Preventiva - Visão Geral</title>
+    <style>
+        :root {
+            --primary-color: #0056b3;
+            --secondary-color: #6c757d;
+            --bg-color: #f4f6f9;
+            --header-bg: #2c3e50;
+            --text-color: #333;
+            --card-bg: #ffffff;
+            --success-color: #2ecc71;
+            --warning-color: #f39c12;
+            --info-color: #3498db;
+        }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.7;
+            font-size: 18px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            background: var(--header-bg);
+            color: white;
+            padding: 60px 20px;
+            text-align: center;
+        }
+        header h1 {
+            margin: 0;
+            font-size: 2.8em;
+            font-weight: 700;
+        }
+        header p {
+            font-size: 1.4em;
+            opacity: 0.9;
+            margin-top: 10px;
+            font-weight: 300;
+        }
+        nav {
+            position: sticky;
+            top: 0;
+            background-color: var(--card-bg);
+            border-bottom: 1px solid #ddd;
+            z-index: 1000;
+            padding: 0 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        nav ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        nav li a {
+            display: block;
+            padding: 16px 22px;
+            text-decoration: none;
+            color: var(--primary-color);
+            font-weight: 600;
+            transition: background-color 0.2s, color 0.2s;
+            font-size: 1em;
+        }
+        nav li a:hover {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        section {
+            padding: 80px 0;
+            border-bottom: 1px solid #eee;
+        }
+        section:last-of-type { border-bottom: none; }
+        h2 {
+            text-align: center;
+            font-size: 2.4em;
+            margin-bottom: 60px;
+            color: var(--header-bg);
+            font-weight: 600;
+        }
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 30px;
+        }
+        .icon-card h3 {
+            color: var(--primary-color);
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            font-size: 1.3em;
+        }
+        .icon-card h3 i {
+            margin-right: 15px;
+            font-size: 1.8em;
+            width: 40px;
+            text-align: center;
+            color: var(--info-color);
+        }
+        
+        /* Estrutura de Dados */
+        .structure-diagram { text-align: center; }
+        .structure-item {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        .structure-item span { font-weight: normal; font-size: 0.9em; color: var(--secondary-color); display: block; }
+        .structure-arrow { font-size: 1.5em; color: var(--secondary-color); margin: 0 0 15px; }
+
+        /* Ciclo de Trabalho */
+        #ciclo-operacional .grid {
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            align-items: stretch; /* Garante que os cards tenham a mesma altura */
+        }
+        #ciclo-operacional .card { display: flex; flex-direction: column; }
+        .phase-header {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+        .phase-icon {
+            font-size: 2.5em;
+            color: var(--primary-color);
+            margin-bottom: 15px;
+        }
+        .phase-header h3 {
+            margin: 0;
+            font-size: 1.4em;
+            color: var(--header-bg);
+        }
+        #ciclo-operacional .card ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            flex-grow: 1; /* Faz a lista crescer para preencher o espaço */
+        }
+        #ciclo-operacional .card li {
+            position: relative;
+            padding-left: 25px;
+            margin-bottom: 10px;
+        }
+        #ciclo-operacional .card li::before {
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            position: absolute;
+            left: 0;
+            top: 4px;
+            color: var(--primary-color);
+            content: '\f138'; /* fa-arrow-alt-circle-right */
+        }
+
+        .limitations ul { list-style: none; padding: 0; }
+        .limitations li {
+            padding-left: 35px;
+            position: relative;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+        .limitations li::before {
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            position: absolute;
+            left: 0;
+            top: 5px;
+            font-size: 1.2em;
+            content: '\f071'; color: var(--warning-color);
+        }
+        #limitacoes .card { max-width: 800px; margin-left: auto; margin-right: auto; }
+        .good-practice {
+            font-size: 0.9em;
+            color: var(--secondary-color);
+            margin-top: 5px;
+            padding-left: 35px;
+        }
+
+        @media (max-width: 768px) {
+            nav ul { flex-direction: column; text-align: center; }
+            body { font-size: 16px; }
+            header h1 { font-size: 2.2em; }
+        }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+</head>
+<body>
+
+    <header>
+        <div class="container">
+            <h1>Sistema Gestor de<br>Manutenção Predial Preventiva</h1>
+            <p>Visão Geral das Funcionalidades e Fluxo de Trabalho</p>
+        </div>
+    </header>
+
+    <nav>
+        <ul>
+            <li><a href="#visao-geral">Visão Geral</a></li>
+            <li><a href="#estrutura">Estrutura de Dados</a></li>
+            <li><a href="#ciclo-operacional">Ciclo de Trabalho</a></li>
+            <li><a href="#capacidades">Capacidades</a></li>
+            <li><a href="#limitacoes">Limitações Atuais</a></li>
+            <li><a href="#primeiros-passos">Primeiros Passos</a></li>
+        </ul>
+    </nav>
+
+    <section id="visao-geral">
+        <div class="container">
+            <h2>Visão Geral do Sistema</h2>
+            <div class="grid">
+                <div class="card icon-card">
+                    <h3><i class="fas fa-file-invoice"></i>Digitalização do PMOC</h3>
+                    <p>O sistema funciona como uma versão digital e interativa do Plano de Manutenção, Operação e Controle. Ele converte as listas de serviços e suas periodicidades em uma base de dados estruturada.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="fas fa-cogs"></i>Automação do Planejamento</h3>
+                    <p>Sua função primária é automatizar o cálculo e a organização das manutenções futuras. Com base no histórico de execuções, o sistema projeta o cronograma, eliminando a necessidade de elaboração manual.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="fas fa-history"></i>Centralização do Histórico</h3>
+                    <p>Cada serviço executado é registrado, construindo um histórico centralizado por componente, sistema, subsistema ou grande área. Isso serve como uma fonte de dados para análises e auditorias.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="estrutura">
+        <div class="container">
+            <h2>A Estrutura de Dados: O Coração do Sistema</h2>
+            <div class="grid">
+                <div class="card">
+                    <h3>Hierarquia Lógica</h3>
+                    <p>Para refletir a organização de um plano de manutenção real, o sistema utiliza uma estrutura hierárquica. Entender essa lógica é fundamental para operá-lo eficientemente.</p>
+                    <div class="structure-diagram">
+                        <div class="structure-item">Grande Área <span>(Ex: Elétrica, Climatização)</span></div>
+                        <div class="structure-arrow"><i class="fas fa-chevron-down"></i></div>
+                        <div class="structure-item">Sistema <span>(Ex: Grupo Geradores, Sistema VRF)</span></div>
+                        <div class="structure-arrow"><i class="fas fa-chevron-down"></i></div>
+                        <div class="structure-item">Subsistema (Opcional) <span>(Ex: Condensadoras, Evaporadoras)</span></div>
+                        <div class="structure-arrow"><i class="fas fa-chevron-down"></i></div>
+                        <div class="structure-item">Componente <span>(Ex: Gerador Stemac 01, Condensadora TAG 1A)</span></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>Herança de Serviços</h3>
+                    <p>O poder desta estrutura está na herança de checklists:</p>
+                    <ul>
+                        <li>Você define serviços de manutenção no nível do <strong>Sistema</strong>.</li>
+                        <li>Todos os <strong>Componentes</strong> associados a esse Sistema automaticamente herdam essa lista de serviços.</li>
+                        <li>É possível adicionar serviços específicos diretamente em um Componente, sem afetar o plano padrão do Sistema.</li>
+                    </ul>
+                    <p>Isso garante padronização, ao mesmo tempo que oferece flexibilidade para tratar exceções em equipamentos individuais.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="ciclo-operacional">
+        <div class="container">
+            <h2>O Ciclo de Trabalho Operacional</h2>
+            <p style="text-align: center; max-width: 800px; margin: 0 auto 60px;">O uso do sistema foi projetado para se integrar ao fluxo de trabalho existente de planejamento e fiscalização, dividido em quatro fases principais.</p>
+            <div class="grid">
+                <div class="card">
+                    <div class="phase-header">
+                        <div class="phase-icon"><i class="fas fa-database"></i></div>
+                        <h3>Fase 1: Configuração</h3>
+                    </div>
+                    <ul>
+                        <li>Carregar o arquivo de dados (.JSON) através da função "Abrir...".</li><hr>
+                        <li>Verificar se os Sistemas e Componentes estão corretos.</li><hr>
+                        <li>Realizar ajustes ou novos cadastros conforme a necessidade.</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <div class="phase-header">
+                        <div class="phase-icon"><i class="fas fa-file-export"></i></div>
+                        <h3>Fase 2: Planejamento</h3>
+                    </div>
+                    <ul>
+                        <li>Na tela de "Relatórios", usar a função "Exportar Plano de Manutenção".</li><hr>
+                        <li>Definir o período e as áreas desejadas do plano de trabalho.</li><hr>
+                        <li>O arquivo gerado (.XLSX) é entregue para a equipe de execução.</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <div class="phase-header">
+                        <div class="phase-icon"><i class="fas fa-file-import"></i></div>
+                        <h3>Fase 3: Atualização</h3>
+                    </div>
+                    <ul>
+                        <li>Após a execução, a contratada devolve o mesmo arquivo preenchido com os status.</li><hr>
+                        <li>O fiscal utiliza a função "Importar Relatório Técnico" para carregar o arquivo.</li><hr>
+                        <li>O sistema exibe uma tela de validação para o fiscal aprovar as atualizações, que são salvas em massa.</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <div class="phase-header">
+                        <div class="phase-icon"><i class="fas fa-chart-line"></i></div>
+                        <h3>Fase 4: Análise</h3>
+                    </div>
+                    <ul>
+                        <li>Acessar o "Dashboard" para uma visão do status geral dos serviços.</li><hr>
+                        <li>Utilizar a tela de "Indicadores" para análises sobre conformidade e <em>backlog</em>.</li><hr>
+                        <li>Consultar o histórico detalhado na tela de "Manutenções" usando os filtros avançados.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="capacidades">
+        <div class="container">
+            <h2>Capacidades Detalhadas do Sistema</h2>
+            <div class="grid">
+                <div class="card icon-card">
+                    <h3><i class="fas fa-tachometer-alt"></i>Dashboard Central</h3>
+                    <p>Exibe o status atual dos serviços (Vencidos, Pendentes, A Vencer) e um calendário interativo para uma visão geral e rápida da programação.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="fas fa-tasks"></i>Gestão de Status de OS</h3>
+                    <p>Permite o registro do ciclo de vida de cada serviço: conclusão, pendência com motivo, e reversão com justificativa para fins de auditoria.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="fas fa-chart-pie"></i>Painel de Indicadores</h3>
+                    <p>Apresenta KPIs de desempenho (Taxa de Conformidade, Backlog) e gráficos sobre a distribuição dos serviços por status, criticidade e área.</p>
+                </div>
+                 <div class="card icon-card">
+                    <h3><i class="fas fa-file-excel"></i>Módulo de Relatórios</h3>
+                    <p>Centraliza a importação e exportação de dados em .XLSX para gerar planos de trabalho, documentação do PMOC e backups completos do histórico.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="fas fa-filter"></i>Consultas e Filtros</h3>
+                    <p>Oferece um sistema de filtragem multicritério para consultar o histórico de serviços por status, período, equipamento ou qualquer combinação de dados.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="fas fa-save"></i>Gestão de Dados Local</h3>
+                    <p>Opera localmente (standalone), com os dados gerenciados pelo usuário através de arquivos .JSON por meio das funções de Abrir e Salvar.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="limitacoes">
+        <div class="container">
+            <h2>Limitações Atuais e Boas Práticas</h2>
+            <div class="card limitations">
+                 <ul>
+                    <li><strong>Operação Local (Standalone)</strong>
+                        <p class="good-practice"><strong>Boa Prática:</strong> O sistema salva os dados no navegador, mas é fundamental usar a função "Salvar Como..." regularmente para criar backups do arquivo de dados (.JSON) em um local seguro (ex: próprio computador, rede corporativa, nuvem).</p>
+                    </li><hr>
+                    <li><strong>Sistema Monousuário</strong>
+                        <p class="good-practice"><strong>Boa Prática:</strong> A ferramenta deve ser operada por um fiscal ou equipe de forma centralizada. Se diferentes pessoas precisarem atualizar os dados, devem fazê-lo a partir do arquivo .JSON mais recente para evitar conflitos de versão.</p>
+                    </li>
+                    <!--<li><strong>Integração Manual com Sistemas Externos</strong>
+                        <p class="good-practice"><strong>Boa Prática:</strong> Utilize os relatórios gerados pelo sistema como fonte de dados para alimentar outros sistemas, como o de abertura de Ordens de Serviço (ex: IBM Máximo), de forma manual e controlada.</p>
+                    </li>-->
+                </ul>
+            </div>
+        </div>
+    </section>
+    
+    <section id="primeiros-passos">
+        <div class="container">
+            <h2>Primeiros Passos no Sistema</h2>
+            <div class="grid">
+                <div class="card icon-card">
+                    <h3><i class="fas fa-folder-open"></i>1. Carregue um PMOC</h3>
+                    <p>No topo da tela, clique em <strong>"Abrir..."</strong> e selecione o arquivo de dados (.JSON) com o plano de manutenção que deseja gerenciar.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="fas fa-search"></i>2. Explore o Sistema</h3>
+                    <p>Navegue pelas seções do menu lateral. Comece pelos <strong>"Cadastros"</strong> para entender a estrutura e depois vá para <strong>"Manutenções"</strong> para ver os serviços agendados.</p>
+                </div>
+                <div class="card icon-card">
+                    <h3><i class="fas fa-cogs"></i>3. Simule o Fluxo</h3>
+                    <p>Vá para a seção <strong>"Relatórios"</strong> e tente exportar um plano de trabalho para o próximo mês. Em seguida, atualize o status de um serviço manualmente na tela de "Manutenções" para ver o sistema em ação.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</body>
+</html>

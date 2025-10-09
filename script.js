@@ -154,12 +154,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const dueDate = lastCompletionDate;
                     const status = dueDate < today ? 'Atrasada' : 'A vencer';
                     
-                    // --- INÍCIO DA MODIFICAÇÃO 1 ---
-                    // Lógica de OS antiga foi removida. Nova lógica determinística:
                     const year = dueDate.getFullYear();
                     const month = String(dueDate.getMonth() + 1).padStart(2, '0');
                     const osNumero = `${year}-${month}-${componente.id}-${servico.id}`;
-                    // --- FIM DA MODIFICAÇÃO 1 ---
 
                     upcomingServices.push({
                         componenteId: componente.id, componenteName: componente.nome, servicoId: servico.id,
@@ -173,12 +170,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const dueDate = calculateNextDueDate(lastCompletionDate, servico.periodicidade);
                 const status = dueDate < today ? 'Atrasada' : 'A vencer';
                 
-                // --- INÍCIO DA MODIFICAÇÃO 2 ---
-                // Lógica de OS antiga foi removida. Nova lógica determinística (aplicada novamente):
                 const year = dueDate.getFullYear();
                 const month = String(dueDate.getMonth() + 1).padStart(2, '0');
                 const osNumero = `${year}-${month}-${componente.id}-${servico.id}`;
-                // --- FIM DA MODIFICAÇÃO 2 ---
 
                 upcomingServices.push({
                     componenteId: componente.id, componenteName: componente.nome,
@@ -807,6 +801,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 serviceLi.dataset.action = 'complete-service';
                 serviceLi.dataset.componenteId = s.componenteId;
                 serviceLi.dataset.servicoId = s.servicoId;
+                serviceLi.dataset.osNumero = s.osNumero; // Adicionado para passar a OS
                 const dateText = s.status === 'Pendente' ? `Pendente desde: ${s.date.toLocaleDateString('pt-BR')}` : `Vence em: ${s.date.toLocaleDateString('pt-BR')}`;
                 serviceLi.innerHTML = `<small>${s.servicoDescricao}</small><span class="due-date">${dateText}</span>`;
                 sublist.appendChild(serviceLi);
@@ -959,6 +954,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tr.dataset.action = 'view-service-details';
             tr.dataset.componenteId = s.componenteId;
             tr.dataset.servicoId = s.servicoId;
+            tr.dataset.osNumero = s.osNumero; // Adicionado para passar a OS
             if (s.historyId) tr.dataset.historyId = s.historyId;
 
             let dateText, actionButton;
@@ -969,11 +965,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     break;
                 case 'Pendente':
                     dateText = `Pendente desde: ${s.date.toLocaleDateString('pt-BR')}`;
-                    actionButton = `<button class="btn btn-warning" data-action="complete-service" data-componente-id="${s.componenteId}" data-servico-id="${s.servicoId}"><i class="fas fa-check-circle"></i> Finalizar</button>`;
+                    actionButton = `<button class="btn btn-warning" data-action="complete-service" data-componente-id="${s.componenteId}" data-servico-id="${s.servicoId}" data-os-numero="${s.osNumero}"><i class="fas fa-check-circle"></i> Finalizar</button>`;
                     break;
                 default:
                     dateText = s.date.toLocaleDateString('pt-BR');
-                    actionButton = `<button class="btn btn-primary" data-action="complete-service" data-componente-id="${s.componenteId}" data-servico-id="${s.servicoId}"><i class="fas fa-check"></i> Concluir</button>`;
+                    actionButton = `<button class="btn btn-primary" data-action="complete-service" data-componente-id="${s.componenteId}" data-servico-id="${s.servicoId}" data-os-numero="${s.osNumero}"><i class="fas fa-check"></i> Concluir</button>`;
             }
             tr.innerHTML = `
                 <td>${s.componenteName}</td>
@@ -1054,34 +1050,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showStatusChoiceModal() {
-        const { componenteId, servicoId } = editingItemId;
+        const { componenteId, servicoId, osNumero } = editingItemId;
         const bodyHtml = `
             <p>Como você deseja atualizar o status deste serviço?</p>
             <div class="form-actions" style="justify-content: center; gap: 20px;">
-                <button class="btn btn-primary" data-action="choose-completed" data-componente-id="${componenteId}" data-servico-id="${servicoId}">
+                <button class="btn btn-primary" data-action="choose-completed" data-componente-id="${componenteId}" data-servico-id="${servicoId}" data-os-numero="${osNumero}">
                     <i class="fas fa-check-circle"></i> Concluído
                 </button>
-                <button class="btn btn-secondary" data-action="choose-pending" data-componente-id="${componenteId}" data-servico-id="${servicoId}">
+                <button class="btn btn-secondary" data-action="choose-pending" data-componente-id="${componenteId}" data-servico-id="${servicoId}" data-os-numero="${osNumero}">
                     <i class="fas fa-pause-circle"></i> Pendente
                 </button>
             </div>`;
         showModal('Atualizar Status do Serviço', bodyHtml, '');
     }
 
-    function handleCompleteService(componenteId, servicoId) {
+    function handleCompleteService(componenteId, servicoId, osNumero) {
         componenteId = parseInt(componenteId);
-        const allServices = getAllMaintenanceServicesForDisplay();
         
-        const service = allServices.find(s => s.componenteId === componenteId && s.servicoId === servicoId && s.status !== 'Concluído');
+        const allServices = getAllMaintenanceServicesForDisplay();
+        const service = allServices.find(s => s.componenteId === componenteId && s.servicoId === servicoId && s.osNumero === osNumero && s.status !== 'Concluído');
 
         if (!service) {
-            console.error("Serviço ativo não encontrado para iniciar a ação.", {componenteId, servicoId});
+            console.error("Serviço ativo não encontrado para iniciar a ação.", {componenteId, servicoId, osNumero});
             alert("Erro: Serviço ativo não encontrado. Ele pode já ter sido concluído.");
             return;
         }
-
-        const osNumero = service.osNumero;
-
+        
         editingItemId = { componenteId, servicoId, osNumero };
         showStatusChoiceModal();
     }
@@ -1089,7 +1083,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function showCompletionForm() {
         const { componenteId, servicoId, osNumero } = editingItemId;
         const allServices = getAllMaintenanceServicesForDisplay();
-        const service = allServices.find(s => s.componenteId === componenteId && s.servicoId === servicoId && s.status !== 'Concluído');
+        const service = allServices.find(s => s.osNumero === osNumero);
         
         const todayStr = today.toISOString().slice(0, 10);
         const bodyHtml = `
@@ -1112,7 +1106,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function showPendingForm() {
         const { componenteId, servicoId, osNumero } = editingItemId;
-        const service = getAllMaintenanceServicesForDisplay().find(s => s.componenteId === componenteId && s.servicoId === servicoId && s.status !== 'Concluído');
+        const service = getAllMaintenanceServicesForDisplay().find(s => s.osNumero === osNumero);
 
         const todayStr = today.toISOString().slice(0, 10);
         const bodyHtml = `
@@ -1129,6 +1123,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <select id="pending-reason" required>
                         <option value="">Selecione...</option>
                         <option value="Material insuficiente">Material insuficiente</option>
+                        <option value="Clima impróprio">Clima impróprio</option>
                         <option value="Falta de autorização">Falta de autorização</option>
                         <option value="Pessoal insuficiente">Pessoal insuficiente</option>
                         <option value="Outros">Outros</option>
@@ -1147,6 +1142,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showModal('Registrar Pendência', bodyHtml, footerHtml);
     }
 
+    // --- MODIFICAÇÃO INICIADA: saveCompletion ---
     function saveCompletion() {
         const { componenteId, servicoId, osNumero } = editingItemId;
         const completionDate = document.getElementById('completion-date').value;
@@ -1157,16 +1153,35 @@ document.addEventListener('DOMContentLoaded', () => {
             return; 
         }
 
-        const newHistoryId = appData.nextHistoricoId++;
-        appData.historicoManutencoes.push({
-            id: newHistoryId, componenteId: componenteId, servicoId: servicoId,
-            data: completionDate, status: 'Concluído', os: osNumero,
-            obs: completionObs || 'Serviço concluído.'
-        });
+        // Procura se já existe um registro "Pendente" para esta OS no histórico.
+        const existingPendingIndex = appData.historicoManutencoes.findIndex(h => h.os === osNumero && h.status === 'Pendente');
+
+        if (existingPendingIndex > -1) {
+            // Se encontrou (o serviço estava pendente), ATUALIZA o registro existente.
+            const historyEntry = appData.historicoManutencoes[existingPendingIndex];
+            historyEntry.status = 'Concluído';
+            historyEntry.data = completionDate;
+            historyEntry.obs = completionObs || 'Serviço concluído.';
+            // As informações de motivo da pendência são mantidas para histórico.
+        } else {
+            // Se não encontrou (serviço estava "A vencer" ou "Atrasado"), CRIA um novo registro no histórico.
+            const newHistoryId = appData.nextHistoricoId++;
+            appData.historicoManutencoes.push({
+                id: newHistoryId,
+                componenteId: componenteId,
+                servicoId: servicoId,
+                data: completionDate,
+                status: 'Concluído',
+                os: osNumero,
+                obs: completionObs || 'Serviço concluído.'
+            });
+        }
+        
         saveData();
         closeModal();
         if (renderers[activeScreen]) renderers[activeScreen]();
     }
+    // --- MODIFICAÇÃO FINALIZADA: saveCompletion ---
 
     function savePendingStatus() {
         const { componenteId, servicoId, osNumero } = editingItemId;
@@ -1202,21 +1217,72 @@ document.addEventListener('DOMContentLoaded', () => {
         if (renderers[activeScreen]) renderers[activeScreen]();
     }
 
+    // --- MODIFICAÇÃO INICIADA: handleRevertService ---
     function handleRevertService(historyId) {
         editingItemId = historyId;
         const historyEntry = appData.historicoManutencoes.find(h => h.id === historyId);
         if (!historyEntry) return;
-        const bodyHtml = `<p>Você tem certeza que deseja reverter esta conclusão? O registro será removido e o serviço voltará a ser agendado com base na execução anterior.</p>`;
+
+        const componente = appData.componentes.find(c => c.id === historyEntry.componenteId);
+        const serviceInfo = getAllMaintenanceServicesForDisplay().find(s => s.historyId === historyId);
+        
+        const bodyHtml = `
+            <form id="revert-service-form">
+                <p>Você está revertendo a conclusão do seguinte serviço:</p>
+                <p><strong>Componente:</strong> ${componente.nome}</p>
+                <p><strong>Serviço:</strong> ${serviceInfo.servicoDescricao}</p>
+                <p><strong>OS:</strong> ${historyEntry.os}</p>
+                <div class="info-note">
+                    <i class="fas fa-info-circle"></i>
+                    <p>O status deste serviço será alterado para <strong>Pendente</strong> e qualquer serviço futuro gerado a partir desta conclusão será removido.</p>
+                </div>
+                <div class="form-group" style="margin-top: 20px;">
+                    <label for="revert-reason">Por favor, informe o motivo da reversão:</label>
+                    <textarea id="revert-reason" rows="3" required></textarea>
+                </div>
+            </form>
+        `;
         const footerHtml = `<button class="btn btn-secondary" data-action="cancel-modal">Cancelar</button><button class="btn btn-danger" data-action="confirm-revert-service">Confirmar Reversão</button>`;
         showModal('Reverter Conclusão de Serviço', bodyHtml, footerHtml);
     }
+    // --- MODIFICAÇÃO FINALIZADA: handleRevertService ---
 
+    // --- MODIFICAÇÃO INICIADA: confirmRevertService ---
     function confirmRevertService() {
-        appData.historicoManutencoes = appData.historicoManutencoes.filter(h => h.id !== editingItemId);
+        const historyId = editingItemId;
+        const revertReason = document.getElementById('revert-reason').value.trim();
+
+        if (!revertReason) {
+            alert('O motivo da reversão é obrigatório.');
+            return;
+        }
+
+        const revertedServiceIndex = appData.historicoManutencoes.findIndex(h => h.id === historyId);
+        if (revertedServiceIndex === -1) {
+            alert('Erro: Registro histórico não encontrado.');
+            closeModal();
+            return;
+        }
+
+        const revertedServiceRecord = appData.historicoManutencoes[revertedServiceIndex];
+
+        // A lógica de `generateServiceInstances` já impede a geração de um próximo serviço
+        // se o último status for "Pendente". Portanto, não precisamos remover manualmente o
+        // serviço futuro. Apenas alterar o status do registro revertido é suficiente para
+        // que o sistema se auto-corrija na próxima renderização.
+
+        // Altera o registro original de "Concluído" para "Pendente"
+        revertedServiceRecord.status = 'Pendente';
+        revertedServiceRecord.data = new Date().toISOString().slice(0, 10); // A data da pendência é agora
+        revertedServiceRecord.motivo = "Serviço Revertido";
+        revertedServiceRecord.motivoDetalhado = revertReason;
+        revertedServiceRecord.obs = `Revertido em ${new Date().toLocaleDateString('pt-BR')}. Observação original: ${revertedServiceRecord.obs || 'N/A'}`;
+
         saveData();
         closeModal();
         if (renderers[activeScreen]) renderers[activeScreen]();
     }
+    // --- MODIFICAÇÃO FINALIZADA: confirmRevertService ---
 
     function handleViewServiceDetails(componenteId, servicoId, historyId) {
         const allServices = getAllMaintenanceServicesForDisplay();
@@ -1224,10 +1290,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (historyId) {
             service = allServices.find(s => s.historyId === parseInt(historyId));
         } else {
+            // Ajustado para encontrar o serviço projetado correto
             service = allServices.find(s => 
                 s.componenteId === parseInt(componenteId) && 
                 s.servicoId === servicoId && 
-                s.status !== 'Concluído'
+                s.type === 'upcoming'
             );
         }
 
@@ -1262,7 +1329,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <legend>Registro da Última Execução</legend>
                     <dl class="details-list">
                         <dt>Serviço:</dt><dd>${service.servicoDescricao}</dd>
-                        <dt>Status:</dt><dd><span class="status-badge concluida">${service.status}</span></dd>
+                        <dt>Status:</dt><dd><span class="status-badge concluido">${service.status}</span></dd>
                         <dt>Data de Realização:</dt><dd>${service.date.toLocaleDateString('pt-BR')}</dd>
                         <dt>Nº da OS:</dt><dd>${service.osNumero || 'Não informado'}</dd>
                         <div class="full-width"><dt>Detalhes da Conclusão:</dt><dd><pre>${service.obs || 'Nenhuma observação.'}</pre></dd></div>
@@ -1475,7 +1542,7 @@ document.addEventListener('DOMContentLoaded', () => {
             conclusaoCell.protection = { locked: false };
             row.getCell('M').protection = { locked: false };
             const motivoCell = row.getCell('N');
-            motivoCell.dataValidation = { type: 'list', allowBlank: true, formulae: ['"Material insuficiente,Falta de autorização,Pessoal insuficiente,Outros"'] };
+            motivoCell.dataValidation = { type: 'list', allowBlank: true, formulae: ['"Material insuficiente,Clima impróprio,Falta de autorização,Pessoal insuficiente,Outros"'] };
             motivoCell.protection = { locked: false };
             row.getCell('O').protection = { locked: false };
         });
@@ -1830,7 +1897,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            const newHistoryId = appData.historicoManutencoes.length > 0 ? Math.max(...appData.historicoManutencoes.map(h => h.id)) + 1 : 1;
+            const newHistoryId = appData.nextHistoricoId++;
             
             if (checkbox.checked) {
                 let status = normalizeStatus(serviceData.conclusao);
@@ -2005,6 +2072,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const historyId = parseInt(actionButton.dataset.historyId);
             const componenteId = actionButton.dataset.componenteId;
             const servicoId = actionButton.dataset.servicoId;
+            const osNumero = actionButton.dataset.osNumero; // Adicionado para capturar OS
             const startDateInput = document.getElementById('filter-data-inicio');
             const endDateInput = document.getElementById('filter-data-fim');
             const todayForFilters = new Date(today);
@@ -2041,7 +2109,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'edit-componente': handleEditComponente(id); break;
                 case 'delete-componente': handleDeleteComponente(id); break;
                 case 'save-componente': saveComponente(); break;
-                case 'complete-service': handleCompleteService(componenteId, servicoId); break;
+                case 'complete-service': handleCompleteService(componenteId, servicoId, osNumero); break;
                 case 'choose-completed': showCompletionForm(); break;
                 case 'choose-pending': showPendingForm(); break;
                 case 'save-completion': saveCompletion(); break;
@@ -2363,7 +2431,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // ADICIONADO: Chama a atualização dos indicadores em QUALQUER mudança de filtro
         updateIndicadores();
     });
 
@@ -2429,42 +2496,106 @@ document.addEventListener('DOMContentLoaded', () => {
         const start = new Date(startDate);
         const end = new Date(endDate);
 
-        let planejados = allServices.filter(s => {
+        // Passo 1: Definir o universo de TUDO que foi planejado para o período.
+        // Isso inclui serviços que agora podem estar Atrasados, Pendentes ou Concluídos.
+        let universoPlanejado = allServices.filter(s => {
             const serviceDate = new Date(s.date.toISOString().slice(0, 10));
+            
+            // A data original do serviço (seja ele projetado ou histórico) deve estar no período.
             if (serviceDate < start || serviceDate > end) return false;
+
+            // Aplica os filtros adicionais
             if (grandeAreaId && s.grandeAreaId !== grandeAreaId) return false;
             if (sistemaId && s.sistemaId !== sistemaId) return false;
             if (criticidade && s.criticidade !== criticidade) return false;
+            
             return true;
         });
 
-        if (planejados.length === 0) return 0.0;
+        // Se nada foi planejado, a conformidade é 100% (não houve falhas).
+        if (universoPlanejado.length === 0) return 100.0;
 
-        const concluidosNoPrazo = planejados.filter(s => {
-            if (s.status !== 'Concluído') return false;
-            return true; 
-        }).length;
+        // Passo 2: DENTRO desse universo planejado, contar quantos foram concluídos.
+        const concluidosDoUniverso = universoPlanejado.filter(s => s.status === 'Concluído').length;
 
-        return (concluidosNoPrazo / planejados.length) * 100;
+        // Passo 3: Calcular a taxa. Este valor nunca será > 100.
+        return (concluidosDoUniverso / universoPlanejado.length) * 100;
     }
 
     function renderStatusGeralChart(services) {
         const ctx = document.getElementById('status-geral-chart').getContext('2d');
+
+        // 1. Mapeamento explícito de status para cores
+        const colorMap = {
+            'Atrasada': 'var(--status-atrasada)',       // Vermelho
+            'A Vencer': 'var(--primary-color-button)', // Azul
+            'Pendente': 'var(--status-hoje)',          // Amarelo
+            'Concluído': 'var(--status-concluida)'      // Verde
+        };
+        // Cores "fallback" caso a variável CSS não seja encontrada
+        const fallbackColorMap = {
+            'Atrasada': '#e74c3c',
+            'A Vencer': '#3581d1',
+            'Pendente': '#f1c40f',
+            'Concluído': '#2ecc71'
+        };
+
+
+        // 2. Agrega os dados, normalizando o nome "A vencer" para consistência
         const statusCounts = services.reduce((acc, s) => {
-            acc[s.status] = (acc[s.status] || 0) + 1;
+            let status = s.status;
+            if (status === 'A vencer') status = 'A Vencer';
+            acc[status] = (acc[status] || 0) + 1;
             return acc;
         }, {});
 
+        // 3. Prepara os dados para o gráfico
+        const labels = Object.keys(statusCounts);
+        const data = Object.values(statusCounts);
+
+        // 4. Cria o array de cores dinamicamente, na ordem correta dos labels
+        // Isso garante que "Atrasada" será sempre vermelho, "Concluído" sempre verde, etc.
+        const backgroundColors = labels.map(label => {
+            const colorVar = colorMap[label] || '#cccccc'; // Pega a variável CSS ou um cinza padrão
+            // Tenta resolver a variável CSS, se falhar, usa o fallback
+            try {
+                // Cria um elemento temporário para resolver a variável CSS
+                const tempEl = document.createElement('div');
+                tempEl.style.color = colorVar;
+                document.body.appendChild(tempEl);
+                const resolvedColor = window.getComputedStyle(tempEl).color;
+                document.body.removeChild(tempEl);
+                return resolvedColor;
+            } catch (e) {
+                return fallbackColorMap[label] || '#cccccc'; // Usa o fallback em caso de erro
+            }
+        });
+
+
+        // 5. Destrói a instância anterior do gráfico, se existir
+        if (chartInstances.statusGeral) {
+            chartInstances.statusGeral.destroy();
+        }
+
+        // 6. Cria o novo gráfico com as cores corretas e ordenadas
         chartInstances.statusGeral = new Chart(ctx, {
             type: 'doughnut',
             data: {
-                labels: Object.keys(statusCounts),
+                labels: labels,
                 datasets: [{
-                    data: Object.values(statusCounts),
-                    backgroundColor: ['#2ecc71', '#e74c3c', '#f39c12', '#3498db'],
+                    data: data,
+                    backgroundColor: backgroundColors,
                 }]
             },
-            options: { responsive: true, maintainAspectRatio: false }
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                }
+            }
         });
     }
 
@@ -2484,10 +2615,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
             const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
 
-            const planejadosMes = allServices.filter(s => s.date >= firstDay && s.date <= lastDay).length;
-            const realizadosMes = allServices.filter(s => s.status === 'Concluído' && s.date >= firstDay && s.date <= lastDay).length;
+            // Filtra todos os serviços (históricos ou projetados) cuja data cai dentro do mês.
+            const servicosDoMes = allServices.filter(s => {
+                const serviceDate = new Date(s.date);
+                return serviceDate >= firstDay && serviceDate <= lastDay;
+            });
             
-            dataPlanejado.push(planejadosMes);
+            // Conta as OS únicas planejadas para aquele mês.
+            const totalPlanejado = new Set(servicosDoMes.map(s => s.osNumero)).size;
+            
+            // Conta os serviços concluídos dentro daquele mês.
+            const realizadosMes = servicosDoMes.filter(s => s.status === 'Concluído').length;
+            
+            dataPlanejado.push(totalPlanejado);
             dataRealizado.push(realizadosMes);
         }
 

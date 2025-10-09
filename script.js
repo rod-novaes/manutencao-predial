@@ -23,7 +23,13 @@ document.addEventListener('DOMContentLoaded', () => {
             sistemas: [],
             subSistemas: [],
             componentes: [],
-            historicoManutencoes: []
+            historicoManutencoes: [],
+            // Adicionar contadores de ID
+            nextGrandeAreaId: 1,
+            nextSistemaId: 1,
+            nextSubSistemaId: 1,
+            nextComponenteId: 1,
+            nextHistoricoId: 1
         };
     }
 
@@ -49,6 +55,22 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } else {
             appData = getInitialEmptyData();
+        }
+        // Garante a retrocompatibilidade para dados salvos sem os contadores
+        if (!appData.nextGrandeAreaId) {
+            appData.nextGrandeAreaId = appData.grandesAreas.length > 0 ? Math.max(...appData.grandesAreas.map(g => g.id)) + 1 : 1;
+        }
+        if (!appData.nextSistemaId) {
+            appData.nextSistemaId = appData.sistemas.length > 0 ? Math.max(...appData.sistemas.map(s => s.id)) + 1 : 1;
+        }
+        if (!appData.nextSubSistemaId) {
+            appData.nextSubSistemaId = appData.subSistemas.length > 0 ? Math.max(...appData.subSistemas.map(ss => ss.id)) + 1 : 1;
+        }
+        if (!appData.nextComponenteId) {
+            appData.nextComponenteId = appData.componentes.length > 0 ? Math.max(...appData.componentes.map(c => c.id)) + 1 : 1;
+        }
+        if (!appData.nextHistoricoId) {
+            appData.nextHistoricoId = appData.historicoManutencoes.length > 0 ? Math.max(...appData.historicoManutencoes.map(h => h.id)) + 1 : 1;
         }
     }
 
@@ -100,7 +122,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function generateServiceInstances() {
         const upcomingServices = [];
-        const osCounters = {};
 
         appData.componentes.forEach(componente => {
             const sistema = appData.sistemas.find(s => s.id === componente.sistemaId);
@@ -133,11 +154,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     const dueDate = lastCompletionDate;
                     const status = dueDate < today ? 'Atrasada' : 'A vencer';
                     
+                    // --- INÍCIO DA MODIFICAÇÃO 1 ---
+                    // Lógica de OS antiga foi removida. Nova lógica determinística:
                     const year = dueDate.getFullYear();
                     const month = String(dueDate.getMonth() + 1).padStart(2, '0');
-                    const osKey = `${year}-${month}`;
-                    if (!osCounters[osKey]) osCounters[osKey] = 1;
-                    const osNumero = `${osKey}-${String(osCounters[osKey]++).padStart(4, '0')}`;
+                    const osNumero = `${year}-${month}-${componente.id}-${servico.id}`;
+                    // --- FIM DA MODIFICAÇÃO 1 ---
 
                     upcomingServices.push({
                         componenteId: componente.id, componenteName: componente.nome, servicoId: servico.id,
@@ -150,11 +172,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 const dueDate = calculateNextDueDate(lastCompletionDate, servico.periodicidade);
                 const status = dueDate < today ? 'Atrasada' : 'A vencer';
+                
+                // --- INÍCIO DA MODIFICAÇÃO 2 ---
+                // Lógica de OS antiga foi removida. Nova lógica determinística (aplicada novamente):
                 const year = dueDate.getFullYear();
                 const month = String(dueDate.getMonth() + 1).padStart(2, '0');
-                const osKey = `${year}-${month}`;
-                if (!osCounters[osKey]) osCounters[osKey] = 1;
-                const osNumero = `${osKey}-${String(osCounters[osKey]++).padStart(4, '0')}`;
+                const osNumero = `${year}-${month}-${componente.id}-${servico.id}`;
+                // --- FIM DA MODIFICAÇÃO 2 ---
 
                 upcomingServices.push({
                     componenteId: componente.id, componenteName: componente.nome,
@@ -243,7 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const grandeArea = appData.grandesAreas.find(g => g.id === editingItemId);
             grandeArea.nome = input.value;
         } else {
-            const newId = appData.grandesAreas.length > 0 ? Math.max(...appData.grandesAreas.map(g => g.id)) + 1 : 1;
+            const newId = appData.nextGrandeAreaId++; // Usa o contador e o incrementa
             appData.grandesAreas.push({ id: newId, nome: input.value });
         }
         saveData();
@@ -329,7 +353,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             appData.sistemas[index] = { ...originalSystem, ...data };
         } else {
-            const newId = appData.sistemas.length > 0 ? Math.max(...appData.sistemas.map(s => s.id)) + 1 : 1;
+            const newId = appData.nextSistemaId++;
             appData.sistemas.push({ id: newId, ...data });
         }
         saveData();
@@ -441,7 +465,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const index = appData.subSistemas.findIndex(ss => ss.id === editingItemId);
             appData.subSistemas[index] = { ...appData.subSistemas[index], ...data };
         } else {
-            const newId = appData.subSistemas.length > 0 ? Math.max(...appData.subSistemas.map(ss => ss.id)) + 1 : 1;
+            const newId = appData.nextSubSistemaId++;
             appData.subSistemas.push({ id: newId, ...data });
         }
         saveData();
@@ -637,7 +661,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             Object.assign(componente, data);
         } else {
-            const newId = appData.componentes.length > 0 ? Math.max(...appData.componentes.map(c => c.id)) + 1 : 1;
+            const newId = appData.nextComponenteId++;
             appData.componentes.push({ id: newId, ...data });
         }
         saveData();
@@ -1133,7 +1157,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return; 
         }
 
-        const newHistoryId = appData.historicoManutencoes.length > 0 ? Math.max(...appData.historicoManutencoes.map(h => h.id)) + 1 : 1;
+        const newHistoryId = appData.nextHistoricoId++;
         appData.historicoManutencoes.push({
             id: newHistoryId, componenteId: componenteId, servicoId: servicoId,
             data: completionDate, status: 'Concluído', os: osNumero,
@@ -1166,7 +1190,7 @@ document.addEventListener('DOMContentLoaded', () => {
             finalMotivo = otherReasonInput;
         }
 
-        const newHistoryId = appData.historicoManutencoes.length > 0 ? Math.max(...appData.historicoManutencoes.map(h => h.id)) + 1 : 1;
+        const newHistoryId = appData.nextHistoricoId++;
         appData.historicoManutencoes.push({
             id: newHistoryId, componenteId: componenteId, servicoId: servicoId,
             data: pendingDate, status: 'Pendente', os: osNumero, 
